@@ -27,6 +27,12 @@ using System.Security.Principal;
 
 namespace Thrift.Transport.Server
 {
+    [Flags]
+    public enum NamedPipeClientFlags {
+        None = 0x00,
+        OnlyLocalClients = 0x01
+    };
+
     // ReSharper disable once InconsistentNaming
     public class TNamedPipeServerTransport : TServerTransport
     {
@@ -37,10 +43,25 @@ namespace Thrift.Transport.Server
         private bool _asyncMode = true;
         private volatile bool _isPending = true;
         private NamedPipeServerStream _stream = null;
+        private readonly bool _onlyLocalClients = false;  // compatibility default
 
-        public TNamedPipeServerTransport(string pipeAddress)
+        public TNamedPipeServerTransport(string pipeAddress, TConfiguration config, NamedPipeClientFlags flags)
+            : base(config)
         {
             _pipeAddress = pipeAddress;
+            _onlyLocalClients = flags.HasFlag(NamedPipeClientFlags.OnlyLocalClients);
+        }
+
+        [Obsolete("This CTOR is deprecated, please use the other one instead.")]
+        public TNamedPipeServerTransport(string pipeAddress, TConfiguration config)
+            : base(config)
+        {
+            _pipeAddress = pipeAddress;
+            _onlyLocalClients = false;
+        }
+
+        public override bool IsOpen() {
+            return true;
         }
 
         public override void Listen()
@@ -91,11 +112,17 @@ namespace Thrift.Transport.Server
 
                 try
                 {
-                    var handle = CreatePipeNative(_pipeAddress, inbuf, outbuf);
-                    if( (handle != null) && (!handle.IsInvalid))
+                    var handle = CreatePipeNative(_pipeAddress, inbuf, outbuf, _onlyLocalClients);
+                    if ((handle != null) && (!handle.IsInvalid))
+                    {
                         _stream = new NamedPipeServerStream(PipeDirection.InOut, _asyncMode, false, handle);
+                        handle = null; // we don't own it any longer
+                    }
                     else
+                    {
+                        handle?.Dispose();
                         _stream = new NamedPipeServerStream(_pipeAddress, direction, maxconn, mode, options, inbuf, outbuf/*, pipesec*/);
+                    }
                 }
                 catch (NotImplementedException) // Mono still does not support async, fallback to sync
                 {
@@ -128,7 +155,7 @@ namespace Thrift.Transport.Server
 
         private const string Kernel32 = "kernel32.dll";
 
-        [DllImport(Kernel32, SetLastError = true)]
+        [DllImport(Kernel32, SetLastError = true, CharSet = CharSet.Unicode)]
         internal static extern IntPtr CreateNamedPipe(
             string lpName, uint dwOpenMode, uint dwPipeMode,
             uint nMaxInstances, uint nOutBufferSize, uint nInBufferSize, uint nDefaultTimeOut,
@@ -138,16 +165,16 @@ namespace Thrift.Transport.Server
 
 
         // Workaround: create the pipe via API call
-        // we have to do it this way, since NamedPipeServerStream() for netstd still lacks a few CTORs
+        // we have to do it this way, since NamedPipeServerStream() for netstd still lacks a few CTORs and/or arguments
         // and _stream.SetAccessControl(pipesec); only keeps throwing ACCESS_DENIED errors at us
         // References:
         // - https://github.com/dotnet/corefx/issues/30170 (closed, continued in 31190)
         // - https://github.com/dotnet/corefx/issues/31190 System.IO.Pipes.AccessControl package does not work
         // - https://github.com/dotnet/corefx/issues/24040 NamedPipeServerStream: Provide support for WRITE_DAC
         // - https://github.com/dotnet/corefx/issues/34400 Have a mechanism for lower privileged user to connect to a privileged user's pipe
-        private SafePipeHandle CreatePipeNative(string name, int inbuf, int outbuf)
+        private static SafePipeHandle CreatePipeNative(string name, int inbuf, int outbuf, bool OnlyLocalClients)
         {
-            if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+            if (! RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 return null; // Windows only
 
             var pinningHandle = new GCHandle();
@@ -176,18 +203,25 @@ namespace Thrift.Transport.Server
                 }
 
                 // a bunch of constants we will need shortly
-                const int PIPE_ACCESS_DUPLEX = 0x00000003;
-                const int FILE_FLAG_OVERLAPPED = 0x40000000;
-                const int WRITE_DAC = 0x00040000;
-                const int PIPE_TYPE_BYTE = 0x00000000;
-                const int PIPE_READMODE_BYTE = 0x00000000;
-                const int PIPE_UNLIMITED_INSTANCES = 255;
+                const uint PIPE_ACCESS_DUPLEX = 0x00000003;
+                const uint FILE_FLAG_OVERLAPPED = 0x40000000;
+                const uint WRITE_DAC = 0x00040000;
+                const uint PIPE_TYPE_BYTE = 0x00000000;
+                const uint PIPE_READMODE_BYTE = 0x00000000;
+                const uint PIPE_UNLIMITED_INSTANCES = 255;
+                const uint PIPE_ACCEPT_REMOTE_CLIENTS = 0x00000000;  // Connections from remote clients can be accepted and checked against the security descriptor for the pipe.
+                const uint PIPE_REJECT_REMOTE_CLIENTS = 0x00000008;  // Connections from remote clients are automatically rejected. 
+
+                // any extra flags we want to add
+                uint dwPipeModeXtra
+                    = (OnlyLocalClients ? PIPE_REJECT_REMOTE_CLIENTS : PIPE_ACCEPT_REMOTE_CLIENTS)
+                    ;
 
                 // create the pipe via API call
                 var rawHandle = CreateNamedPipe(
                     @"\\.\pipe\" + name,
                     PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | WRITE_DAC,
-                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | dwPipeModeXtra,
                     PIPE_UNLIMITED_INSTANCES, (uint)inbuf, (uint)outbuf,
                     5 * 1000,
                     secAttrs
@@ -210,7 +244,7 @@ namespace Thrift.Transport.Server
 
         #endregion
 
-        protected override async Task<TTransport> AcceptImplementationAsync(CancellationToken cancellationToken)
+        protected override async ValueTask<TTransport> AcceptImplementationAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -218,7 +252,7 @@ namespace Thrift.Transport.Server
 
                 await _stream.WaitForConnectionAsync(cancellationToken);
 
-                var trans = new ServerTransport(_stream);
+                var trans = new ServerTransport(_stream, Configuration);
                 _stream = null; // pass ownership to ServerTransport
 
                 //_isPending = false;
@@ -230,6 +264,11 @@ namespace Thrift.Transport.Server
                 Close();
                 throw;
             }
+            catch (TaskCanceledException)
+            {
+                Close();
+                throw;  // let it bubble up
+            }
             catch (Exception e)
             {
                 Close();
@@ -237,63 +276,84 @@ namespace Thrift.Transport.Server
             }
         }
 
-        private class ServerTransport : TTransport
+        private class ServerTransport : TEndpointTransport
         {
-            private readonly NamedPipeServerStream _stream;
+            private readonly NamedPipeServerStream PipeStream;
 
-            public ServerTransport(NamedPipeServerStream stream)
+            public ServerTransport(NamedPipeServerStream stream, TConfiguration config)
+                : base(config)
             {
-                _stream = stream;
+                PipeStream = stream;
             }
 
-            public override bool IsOpen => _stream != null && _stream.IsConnected;
+            public override bool IsOpen => PipeStream != null && PipeStream.IsConnected;
 
-            public override async Task OpenAsync(CancellationToken cancellationToken)
+            public override Task OpenAsync(CancellationToken cancellationToken)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    await Task.FromCanceled(cancellationToken);
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
             }
 
             public override void Close()
             {
-                _stream?.Dispose();
+                PipeStream?.Dispose();
             }
 
-            public override async Task<int> ReadAsync(byte[] buffer, int offset, int length,
-                CancellationToken cancellationToken)
+            public override async ValueTask<int> ReadAsync(byte[] buffer, int offset, int length, CancellationToken cancellationToken)
             {
-                if (_stream == null)
+                if (PipeStream == null)
                 {
                     throw new TTransportException(TTransportException.ExceptionType.NotOpen);
                 }
 
-                return await _stream.ReadAsync(buffer, offset, length, cancellationToken);
+                CheckReadBytesAvailable(length);
+#if NETSTANDARD2_0
+                var numBytes = await PipeStream.ReadAsync(buffer, offset, length, cancellationToken);
+#else
+                var numBytes = await PipeStream.ReadAsync(buffer.AsMemory(offset, length), cancellationToken);
+#endif
+                CountConsumedMessageBytes(numBytes);
+                return numBytes;
             }
 
-            public override async Task WriteAsync(byte[] buffer, int offset, int length,
-                CancellationToken cancellationToken)
+            public override async Task WriteAsync(byte[] buffer, int offset, int length, CancellationToken cancellationToken)
             {
-                if (_stream == null)
+                if (PipeStream == null)
                 {
                     throw new TTransportException(TTransportException.ExceptionType.NotOpen);
                 }
 
-                await _stream.WriteAsync(buffer, offset, length, cancellationToken);
+                // if necessary, send the data in chunks
+                // there's a system limit around 0x10000 bytes that we hit otherwise
+                // MSDN: "Pipe write operations across a network are limited to 65,535 bytes per write. For more information regarding pipes, see the Remarks section."
+                var nBytes = Math.Min(15 * 4096, length); // 16 would exceed the limit
+                while (nBytes > 0)
+                {
+#if NET5_0
+                    await PipeStream.WriteAsync(buffer.AsMemory(offset, nBytes), cancellationToken);
+#else
+                    await PipeStream.WriteAsync(buffer, offset, nBytes, cancellationToken);
+#endif
+                    offset += nBytes;
+                    length -= nBytes;
+                    nBytes = Math.Min(nBytes, length);
+                }
             }
 
-            public override async Task FlushAsync(CancellationToken cancellationToken)
+            public override Task FlushAsync(CancellationToken cancellationToken)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    await Task.FromCanceled(cancellationToken);
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+
+                ResetConsumedMessageSize();
+                return Task.CompletedTask;
             }
 
             protected override void Dispose(bool disposing)
             {
-                _stream?.Dispose();
+                if (disposing)
+                {
+                    PipeStream?.Dispose();
+                }
             }
         }
     }

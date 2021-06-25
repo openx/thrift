@@ -58,9 +58,9 @@
 class t_program : public t_doc {
 public:
   t_program(std::string path, std::string name)
-    : path_(path), name_(name), out_path_("./"), out_path_is_absolute_(false), scope_(new t_scope) {}
+    : path_(path), name_(name), out_path_("./"), out_path_is_absolute_(false), scope_(new t_scope), recursive_(false) {}
 
-  t_program(std::string path) : path_(path), out_path_("./"), out_path_is_absolute_(false) {
+  t_program(std::string path) : path_(path), out_path_("./"), out_path_is_absolute_(false), recursive_(false) {
     name_ = program_name(path);
     scope_ = new t_scope();
   }
@@ -112,7 +112,10 @@ public:
     objects_.push_back(tx);
     xceptions_.push_back(tx);
   }
-  void add_service(t_service* ts) { services_.push_back(ts); }
+  void add_service(t_service* ts) {
+    ts->validate_unique_members();
+    services_.push_back(ts);
+  }
 
   // Programs to include
   std::vector<t_program*>& get_includes() { return includes_; }
@@ -355,6 +358,10 @@ public:
 
   const std::vector<std::string>& get_c_includes() const { return c_includes_; }
 
+  void set_recursive(const bool recursive) { recursive_ = recursive; }
+
+  bool get_recursive() const { return recursive_; }
+
 private:
   // File path
   std::string path_;
@@ -400,6 +407,9 @@ private:
 
   // C extra includes
   std::vector<std::string> c_includes_;
+
+  // Recursive code generation
+  bool recursive_;
 };
 
 #endif

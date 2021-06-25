@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,29 +24,67 @@ using System.Threading.Tasks;
 namespace Thrift.Transport.Client
 {
     // ReSharper disable once InconsistentNaming
-    public class TMemoryBufferTransport : TTransport
+    public class TMemoryBufferTransport : TEndpointTransport
     {
-        private readonly MemoryStream _byteStream;
-        private bool _isDisposed;
+        private bool IsDisposed;
+        private byte[] Bytes;
+        private int _bytesUsed;
 
-        public TMemoryBufferTransport()
+        public TMemoryBufferTransport(TConfiguration config, int initialCapacity = 2048)
+            : base(config)
         {
-            _byteStream = new MemoryStream();
+            Bytes = new byte[initialCapacity];  
         }
 
-        public TMemoryBufferTransport(byte[] buf)
+        public TMemoryBufferTransport(byte[] buf, TConfiguration config)
+            :base(config)
         {
-            _byteStream = new MemoryStream(buf);
+            Bytes = (byte[])buf.Clone();
+            _bytesUsed = Bytes.Length;
+            UpdateKnownMessageSize(_bytesUsed);
+        }
+
+        public int Position { get; set; }
+
+        public int Capacity
+        {
+            get
+            {
+                Debug.Assert(_bytesUsed <= Bytes.Length);
+                return Bytes.Length;
+            }
+            set
+            {
+                Array.Resize(ref Bytes, value);
+                _bytesUsed = value;
+            }
+        }
+
+        public int Length
+        {
+            get {
+                Debug.Assert(_bytesUsed <= Bytes.Length);
+                return _bytesUsed;
+            }
+            set {
+                if ((Bytes.Length < value) || (Bytes.Length > (10 * value)))
+                    Array.Resize(ref Bytes, Math.Max(2048, (int)(value * 1.25)));
+                _bytesUsed = value;
+            }
+        }
+
+        public void SetLength(int value)
+        {
+            Length = value;
+            Position = Math.Min(Position, value);
         }
 
         public override bool IsOpen => true;
 
-        public override async Task OpenAsync(CancellationToken cancellationToken)
+        public override Task OpenAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
         public override void Close()
@@ -52,46 +92,86 @@ namespace Thrift.Transport.Client
             /** do nothing **/
         }
 
-        public override async Task<int> ReadAsync(byte[] buffer, int offset, int length,
-            CancellationToken cancellationToken)
+        public void Seek(int delta, SeekOrigin origin)
         {
-            return await _byteStream.ReadAsync(buffer, offset, length, cancellationToken);
-        }
-
-        public override async Task WriteAsync(byte[] buffer, CancellationToken cancellationToken)
-        {
-            await _byteStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken);
-        }
-
-        public override async Task WriteAsync(byte[] buffer, int offset, int length, CancellationToken cancellationToken)
-        {
-            await _byteStream.WriteAsync(buffer, offset, length, cancellationToken);
-        }
-
-        public override async Task FlushAsync(CancellationToken cancellationToken)
-        {
-            if (cancellationToken.IsCancellationRequested)
+            int newPos;
+            switch (origin)
             {
-                await Task.FromCanceled(cancellationToken);
+                case SeekOrigin.Begin:
+                    newPos = delta;
+                    break;
+                case SeekOrigin.Current:
+                    newPos = Position + delta;
+                    break;
+                case SeekOrigin.End:
+                    newPos = _bytesUsed + delta;
+                    break;
+                default:
+                    throw new ArgumentException(nameof(origin));
             }
+
+            if ((0 > newPos) || (newPos > _bytesUsed))
+                throw new ArgumentException(nameof(origin));
+            Position = newPos;
+
+            ResetConsumedMessageSize();
+            CountConsumedMessageBytes(Position);
+        }
+
+        public override ValueTask<int> ReadAsync(byte[] buffer, int offset, int length, CancellationToken cancellationToken)
+        {
+            var count = Math.Min(Length - Position, length);
+            Buffer.BlockCopy(Bytes, Position, buffer, offset, count);
+            Position += count;
+            CountConsumedMessageBytes(count);
+            return new ValueTask<int>(count);
+        }
+
+        public override Task WriteAsync(byte[] buffer, CancellationToken cancellationToken)
+        {
+            return WriteAsync(buffer, 0, buffer.Length, cancellationToken);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            var free = Length - Position;
+            Length = Length + count - free;
+            Buffer.BlockCopy(buffer, offset, Bytes, Position, count);
+            Position += count;
+            return Task.CompletedTask;
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ResetConsumedMessageSize();
+            return Task.CompletedTask;
         }
 
         public byte[] GetBuffer()
         {
-            return _byteStream.ToArray();
+            var retval = new byte[Length];
+            Buffer.BlockCopy(Bytes, 0, retval, 0, Length);
+            return retval;
+        }
+
+        internal bool TryGetBuffer(out ArraySegment<byte> bufSegment)
+        {
+            bufSegment = new ArraySegment<byte>(Bytes, 0, _bytesUsed);
+            return true;
         }
 
         // IDisposable
         protected override void Dispose(bool disposing)
         {
-            if (!_isDisposed)
+            if (!IsDisposed)
             {
                 if (disposing)
                 {
-                    _byteStream?.Dispose();
+                    // nothing to do
                 }
             }
-            _isDisposed = true;
+            IsDisposed = true;
         }
     }
 }

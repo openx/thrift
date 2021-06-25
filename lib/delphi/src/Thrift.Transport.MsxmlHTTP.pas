@@ -34,14 +34,15 @@ uses
     Winapi.ActiveX, Winapi.msxml,
   {$ENDIF}
   Thrift.Collections,
+  Thrift.Configuration,
   Thrift.Transport,
   Thrift.Exception,
   Thrift.Utils,
   Thrift.Stream;
 
 type
-  TMsxmlHTTPClientImpl = class( TTransportImpl, IHTTPClient)
-  private
+  TMsxmlHTTPClientImpl = class( TEndpointTransportBase, IHTTPClient)
+  strict private
     FUri : string;
     FInputStream : IThriftStream;
     FOutputStream : IThriftStream;
@@ -52,7 +53,7 @@ type
     FCustomHeaders : IThriftDictionary<string,string>;
 
     function CreateRequest: IXMLHTTPRequest;
-  protected
+  strict protected
     function GetIsOpen: Boolean; override;
     procedure Open(); override;
     procedure Close(); override;
@@ -68,38 +69,44 @@ type
     function GetSendTimeout: Integer;
     procedure SetReadTimeout(const Value: Integer);
     function GetReadTimeout: Integer;
+    function GetSecureProtocols : TSecureProtocols;
+    procedure SetSecureProtocols( const value : TSecureProtocols);
 
     function GetCustomHeaders: IThriftDictionary<string,string>;
     procedure SendRequest;
+
     property DnsResolveTimeout: Integer read GetDnsResolveTimeout write SetDnsResolveTimeout;
     property ConnectionTimeout: Integer read GetConnectionTimeout write SetConnectionTimeout;
     property SendTimeout: Integer read GetSendTimeout write SetSendTimeout;
     property ReadTimeout: Integer read GetReadTimeout write SetReadTimeout;
     property CustomHeaders: IThriftDictionary<string,string> read GetCustomHeaders;
   public
-    constructor Create( const AUri: string);
+    constructor Create( const aUri: string; const aConfig : IThriftConfiguration);  reintroduce;
     destructor Destroy; override;
   end;
 
 
 implementation
 
+const
+  XMLHTTP_CONNECTION_TIMEOUT = 60 * 1000;
+  XMLHTTP_SENDRECV_TIMEOUT   = 30 * 1000;
 
 { TMsxmlHTTPClientImpl }
 
-constructor TMsxmlHTTPClientImpl.Create(const AUri: string);
+constructor TMsxmlHTTPClientImpl.Create( const aUri: string; const aConfig : IThriftConfiguration);
 begin
-  inherited Create;
-  FUri := AUri;
+  inherited Create( aConfig);
+  FUri := aUri;
 
   // defaults according to MSDN
   FDnsResolveTimeout := 0; // no timeout
-  FConnectionTimeout := 60 * 1000;
-  FSendTimeout       := 30 * 1000;
-  FReadTimeout       := 30 * 1000;
+  FConnectionTimeout := XMLHTTP_CONNECTION_TIMEOUT;
+  FSendTimeout       := XMLHTTP_SENDRECV_TIMEOUT;
+  FReadTimeout       := XMLHTTP_SENDRECV_TIMEOUT;
 
   FCustomHeaders := TThriftDictionaryImpl<string,string>.Create;
-  FOutputStream := TThriftStreamAdapterDelphi.Create( TMemoryStream.Create, True);
+  FOutputStream := TThriftStreamAdapterDelphi.Create( TThriftMemoryStream.Create, True);
 end;
 
 function TMsxmlHTTPClientImpl.CreateRequest: IXMLHTTPRequest;
@@ -118,8 +125,8 @@ begin
   then srvHttp.setTimeouts( DnsResolveTimeout, ConnectionTimeout, SendTimeout, ReadTimeout);
 
   Result.open('POST', FUri, False, '', '');
-  Result.setRequestHeader( 'Content-Type', 'application/x-thrift');
-  Result.setRequestHeader( 'Accept', 'application/x-thrift');
+  Result.setRequestHeader( 'Content-Type', THRIFT_MIMETYPE);
+  Result.setRequestHeader( 'Accept', THRIFT_MIMETYPE);
   Result.setRequestHeader( 'User-Agent', 'Delphi/IHTTPClient');
 
   for pair in FCustomHeaders do begin
@@ -173,6 +180,16 @@ begin
   FReadTimeout := Value;
 end;
 
+function TMsxmlHTTPClientImpl.GetSecureProtocols : TSecureProtocols;
+begin
+  Result := [];
+end;
+
+procedure TMsxmlHTTPClientImpl.SetSecureProtocols( const value : TSecureProtocols);
+begin
+  raise TTransportExceptionBadArgs.Create('SetSecureProtocols: Not supported with '+ClassName);
+end;
+
 function TMsxmlHTTPClientImpl.GetCustomHeaders: IThriftDictionary<string,string>;
 begin
   Result := FCustomHeaders;
@@ -180,12 +197,12 @@ end;
 
 function TMsxmlHTTPClientImpl.GetIsOpen: Boolean;
 begin
-  Result := True;
+  Result := Assigned(FOutputStream);
 end;
 
 procedure TMsxmlHTTPClientImpl.Open;
 begin
-  FOutputStream := TThriftStreamAdapterDelphi.Create( TMemoryStream.Create, True);
+  FOutputStream := TThriftStreamAdapterDelphi.Create( TThriftMemoryStream.Create, True);
 end;
 
 procedure TMsxmlHTTPClientImpl.Close;
@@ -200,7 +217,7 @@ begin
     SendRequest;
   finally
     FOutputStream := nil;
-    FOutputStream := TThriftStreamAdapterDelphi.Create( TMemoryStream.Create, True);
+    FOutputStream := TThriftStreamAdapterDelphi.Create( TThriftMemoryStream.Create, True);
     ASSERT( FOutputStream <> nil);
   end;
 end;
@@ -212,7 +229,7 @@ begin
   end;
 
   try
-    Result := FInputStream.Read( pBuf, buflen, off, len)
+    Result := FInputStream.Read( pBuf, buflen, off, len);
   except
     on E: Exception
     do raise TTransportExceptionUnknown.Create(E.Message);
@@ -222,13 +239,13 @@ end;
 procedure TMsxmlHTTPClientImpl.SendRequest;
 var
   xmlhttp : IXMLHTTPRequest;
-  ms : TMemoryStream;
+  ms : TThriftMemoryStream;
   a : TBytes;
   len : Integer;
 begin
   xmlhttp := CreateRequest;
 
-  ms := TMemoryStream.Create;
+  ms := TThriftMemoryStream.Create;
   try
     a := FOutputStream.ToArray;
     len := Length(a);
@@ -239,6 +256,8 @@ begin
     xmlhttp.send( IUnknown( TStreamAdapter.Create( ms, soReference )));
     FInputStream := nil;
     FInputStream := TThriftStreamAdapterCOM.Create( IUnknown( xmlhttp.responseStream) as IStream);
+    ResetConsumedMessageSize;
+    UpdateKnownMessageSize( FInputStream.Size);
   finally
     ms.Free;
   end;
@@ -246,7 +265,9 @@ end;
 
 procedure TMsxmlHTTPClientImpl.Write( const pBuf : Pointer; off, len : Integer);
 begin
-  FOutputStream.Write( pBuf, off, len);
+  if FOutputStream <> nil
+  then FOutputStream.Write( pBuf, off, len)
+  else raise TTransportExceptionNotOpen.Create('Transport closed');
 end;
 
 

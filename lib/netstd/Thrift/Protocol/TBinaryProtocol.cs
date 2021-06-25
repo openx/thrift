@@ -16,26 +16,30 @@
 // under the License.
 
 using System;
+using System.Buffers.Binary;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Thrift.Protocol.Entities;
 using Thrift.Transport;
 
+#pragma warning disable IDE0079 // unnecessary suppression
+#pragma warning disable IDE0066 // use switch expression
+
 namespace Thrift.Protocol
 {
     // ReSharper disable once InconsistentNaming
     public class TBinaryProtocol : TProtocol
     {
-        //TODO: Unit tests
-        //TODO: Localization
-        //TODO: pragma
-
         protected const uint VersionMask = 0xffff0000;
         protected const uint Version1 = 0x80010000;
 
         protected bool StrictRead;
         protected bool StrictWrite;
+
+        // minimize memory allocations by means of an preallocated bytes buffer
+        // The value of 128 is arbitrarily chosen, the required minimum size must be sizeof(long)
+        private readonly byte[] PreAllocatedBuffer = new byte[128];
 
         public TBinaryProtocol(TTransport trans)
             : this(trans, false, true)
@@ -51,10 +55,7 @@ namespace Thrift.Protocol
 
         public override async Task WriteMessageBeginAsync(TMessage message, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (StrictWrite)
             {
@@ -71,245 +72,148 @@ namespace Thrift.Protocol
             }
         }
 
-        public override async Task WriteMessageEndAsync(CancellationToken cancellationToken)
+        public override Task WriteMessageEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task WriteStructBeginAsync(TStruct @struct, CancellationToken cancellationToken)
+        public override Task WriteStructBeginAsync(TStruct @struct, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task WriteStructEndAsync(CancellationToken cancellationToken)
+        public override Task WriteStructEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
         public override async Task WriteFieldBeginAsync(TField field, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
+            cancellationToken.ThrowIfCancellationRequested();
             await WriteByteAsync((sbyte) field.Type, cancellationToken);
             await WriteI16Async(field.ID, cancellationToken);
         }
 
-        public override async Task WriteFieldEndAsync(CancellationToken cancellationToken)
+        public override Task WriteFieldEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
         public override async Task WriteFieldStopAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             await WriteByteAsync((sbyte) TType.Stop, cancellationToken);
         }
 
         public override async Task WriteMapBeginAsync(TMap map, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            await WriteByteAsync((sbyte) map.KeyType, cancellationToken);
-            await WriteByteAsync((sbyte) map.ValueType, cancellationToken);
+            PreAllocatedBuffer[0] = (byte)map.KeyType;
+            PreAllocatedBuffer[1] = (byte)map.ValueType;
+            await Trans.WriteAsync(PreAllocatedBuffer, 0, 2, cancellationToken);
+
             await WriteI32Async(map.Count, cancellationToken);
         }
 
-        public override async Task WriteMapEndAsync(CancellationToken cancellationToken)
+        public override Task WriteMapEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
         public override async Task WriteListBeginAsync(TList list, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
+            cancellationToken.ThrowIfCancellationRequested();
             await WriteByteAsync((sbyte) list.ElementType, cancellationToken);
             await WriteI32Async(list.Count, cancellationToken);
         }
 
-        public override async Task WriteListEndAsync(CancellationToken cancellationToken)
+        public override Task WriteListEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
         public override async Task WriteSetBeginAsync(TSet set, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
+            cancellationToken.ThrowIfCancellationRequested();
             await WriteByteAsync((sbyte) set.ElementType, cancellationToken);
             await WriteI32Async(set.Count, cancellationToken);
         }
 
-        public override async Task WriteSetEndAsync(CancellationToken cancellationToken)
+        public override Task WriteSetEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
         public override async Task WriteBoolAsync(bool b, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
+            cancellationToken.ThrowIfCancellationRequested();
             await WriteByteAsync(b ? (sbyte) 1 : (sbyte) 0, cancellationToken);
-        }
-
-        protected internal static byte[] CreateWriteByte(sbyte b)
-        {
-            var bout = new byte[1];
-
-            bout[0] = (byte) b;
-
-            return bout;
         }
 
         public override async Task WriteByteAsync(sbyte b, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var bout = CreateWriteByte(b);
-            await Trans.WriteAsync(bout, 0, 1, cancellationToken);
+            PreAllocatedBuffer[0] = (byte)b;
+
+            await Trans.WriteAsync(PreAllocatedBuffer, 0, 1, cancellationToken);
         }
-
-        protected internal static byte[] CreateWriteI16(short s)
-        {
-            var i16Out = new byte[2];
-
-            i16Out[0] = (byte) (0xff & (s >> 8));
-            i16Out[1] = (byte) (0xff & s);
-
-            return i16Out;
-        }
-
         public override async Task WriteI16Async(short i16, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var i16Out = CreateWriteI16(i16);
-            await Trans.WriteAsync(i16Out, 0, 2, cancellationToken);
-        }
+            BinaryPrimitives.WriteInt16BigEndian(PreAllocatedBuffer, i16);
 
-        protected internal static byte[] CreateWriteI32(int i32)
-        {
-            var i32Out = new byte[4];
-
-            i32Out[0] = (byte) (0xff & (i32 >> 24));
-            i32Out[1] = (byte) (0xff & (i32 >> 16));
-            i32Out[2] = (byte) (0xff & (i32 >> 8));
-            i32Out[3] = (byte) (0xff & i32);
-
-            return i32Out;
+            await Trans.WriteAsync(PreAllocatedBuffer, 0, 2, cancellationToken);
         }
 
         public override async Task WriteI32Async(int i32, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var i32Out = CreateWriteI32(i32);
-            await Trans.WriteAsync(i32Out, 0, 4, cancellationToken);
+            BinaryPrimitives.WriteInt32BigEndian(PreAllocatedBuffer, i32);
+
+            await Trans.WriteAsync(PreAllocatedBuffer, 0, 4, cancellationToken);
         }
 
-        protected internal static byte[] CreateWriteI64(long i64)
-        {
-            var i64Out = new byte[8];
-
-            i64Out[0] = (byte) (0xff & (i64 >> 56));
-            i64Out[1] = (byte) (0xff & (i64 >> 48));
-            i64Out[2] = (byte) (0xff & (i64 >> 40));
-            i64Out[3] = (byte) (0xff & (i64 >> 32));
-            i64Out[4] = (byte) (0xff & (i64 >> 24));
-            i64Out[5] = (byte) (0xff & (i64 >> 16));
-            i64Out[6] = (byte) (0xff & (i64 >> 8));
-            i64Out[7] = (byte) (0xff & i64);
-
-            return i64Out;
-        }
-
+      
         public override async Task WriteI64Async(long i64, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var i64Out = CreateWriteI64(i64);
-            await Trans.WriteAsync(i64Out, 0, 8, cancellationToken);
+            BinaryPrimitives.WriteInt64BigEndian(PreAllocatedBuffer, i64);
+
+            await Trans.WriteAsync(PreAllocatedBuffer, 0, 8, cancellationToken);
         }
 
         public override async Task WriteDoubleAsync(double d, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             await WriteI64Async(BitConverter.DoubleToInt64Bits(d), cancellationToken);
         }
 
+
         public override async Task WriteBinaryAsync(byte[] bytes, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             await WriteI32Async(bytes.Length, cancellationToken);
             await Trans.WriteAsync(bytes, 0, bytes.Length, cancellationToken);
         }
 
-        public override async Task<TMessage> ReadMessageBeginAsync(CancellationToken cancellationToken)
+        public override async ValueTask<TMessage> ReadMessageBeginAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<TMessage>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             var message = new TMessage();
             var size = await ReadI32Async(cancellationToken);
@@ -332,260 +236,217 @@ namespace Thrift.Protocol
                     throw new TProtocolException(TProtocolException.BAD_VERSION,
                         "Missing version in ReadMessageBegin, old client?");
                 }
-                message.Name = await ReadStringBodyAsync(size, cancellationToken);
+                message.Name = (size > 0) ? await ReadStringBodyAsync(size, cancellationToken) : string.Empty;
                 message.Type = (TMessageType) await ReadByteAsync(cancellationToken);
                 message.SeqID = await ReadI32Async(cancellationToken);
             }
             return message;
         }
 
-        public override async Task ReadMessageEndAsync(CancellationToken cancellationToken)
+        public override Task ReadMessageEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task<TStruct> ReadStructBeginAsync(CancellationToken cancellationToken)
+        public override ValueTask<TStruct> ReadStructBeginAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
-
-            //TODO: no read from internal transport?
-            return new TStruct();
+            cancellationToken.ThrowIfCancellationRequested();
+            return new ValueTask<TStruct>(AnonymousStruct);
         }
 
-        public override async Task ReadStructEndAsync(CancellationToken cancellationToken)
+        public override Task ReadStructEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task<TField> ReadFieldBeginAsync(CancellationToken cancellationToken)
+        public override async ValueTask<TField> ReadFieldBeginAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var type = (TType)await ReadByteAsync(cancellationToken);
+            if (type == TType.Stop)
             {
-                return await Task.FromCanceled<TField>(cancellationToken);
+                return StopField;
             }
 
-            var field = new TField
-            {
-                Type = (TType) await ReadByteAsync(cancellationToken)
+            return new TField {
+                Type = type,
+                ID = await ReadI16Async(cancellationToken)
             };
-
-            if (field.Type != TType.Stop)
-            {
-                field.ID = await ReadI16Async(cancellationToken);
-            }
-
-            return field;
         }
 
-        public override async Task ReadFieldEndAsync(CancellationToken cancellationToken)
+        public override Task ReadFieldEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task<TMap> ReadMapBeginAsync(CancellationToken cancellationToken)
+        public override async ValueTask<TMap> ReadMapBeginAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<TMap>(cancellationToken);
-            }
-
+            cancellationToken.ThrowIfCancellationRequested();
+ 
             var map = new TMap
             {
                 KeyType = (TType) await ReadByteAsync(cancellationToken),
                 ValueType = (TType) await ReadByteAsync(cancellationToken),
                 Count = await ReadI32Async(cancellationToken)
             };
-
+            CheckReadBytesAvailable(map);
             return map;
         }
 
-        public override async Task ReadMapEndAsync(CancellationToken cancellationToken)
+        public override Task ReadMapEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task<TList> ReadListBeginAsync(CancellationToken cancellationToken)
+        public override async ValueTask<TList> ReadListBeginAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<TList>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             var list = new TList
             {
                 ElementType = (TType) await ReadByteAsync(cancellationToken),
                 Count = await ReadI32Async(cancellationToken)
             };
-
+            CheckReadBytesAvailable(list);
             return list;
         }
 
-        public override async Task ReadListEndAsync(CancellationToken cancellationToken)
+        public override Task ReadListEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task<TSet> ReadSetBeginAsync(CancellationToken cancellationToken)
+        public override async ValueTask<TSet> ReadSetBeginAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<TSet>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             var set = new TSet
             {
                 ElementType = (TType) await ReadByteAsync(cancellationToken),
                 Count = await ReadI32Async(cancellationToken)
             };
-
+            CheckReadBytesAvailable(set);
             return set;
         }
 
-        public override async Task ReadSetEndAsync(CancellationToken cancellationToken)
+        public override Task ReadSetEndAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                await Task.FromCanceled(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
 
-        public override async Task<bool> ReadBoolAsync(CancellationToken cancellationToken)
+        public override async ValueTask<bool> ReadBoolAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<bool>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             return await ReadByteAsync(cancellationToken) == 1;
         }
 
-        public override async Task<sbyte> ReadByteAsync(CancellationToken cancellationToken)
+        public override async ValueTask<sbyte> ReadByteAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<sbyte>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var bin = new byte[1];
-            await Trans.ReadAllAsync(bin, 0, 1, cancellationToken); //TODO: why readall ?
-            return (sbyte) bin[0];
+            await Trans.ReadAllAsync(PreAllocatedBuffer, 0, 1, cancellationToken);
+            return (sbyte)PreAllocatedBuffer[0];
         }
 
-        public override async Task<short> ReadI16Async(CancellationToken cancellationToken)
+        public override async ValueTask<short> ReadI16Async(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<short>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var i16In = new byte[2];
-            await Trans.ReadAllAsync(i16In, 0, 2, cancellationToken);
-            var result = (short) (((i16In[0] & 0xff) << 8) | i16In[1] & 0xff);
+            await Trans.ReadAllAsync(PreAllocatedBuffer, 0, 2, cancellationToken);
+            var result = BinaryPrimitives.ReadInt16BigEndian(PreAllocatedBuffer);
             return result;
         }
 
-        public override async Task<int> ReadI32Async(CancellationToken cancellationToken)
+        public override async ValueTask<int> ReadI32Async(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<int>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var i32In = new byte[4];
-            await Trans.ReadAllAsync(i32In, 0, 4, cancellationToken);
+            await Trans.ReadAllAsync(PreAllocatedBuffer, 0, 4, cancellationToken);
 
-            var result = 
-                ((i32In[0] & 0xff) << 24) | 
-                ((i32In[1] & 0xff) << 16) | 
-                ((i32In[2] & 0xff) << 8) |
-                i32In[3] & 0xff;
+            var result = BinaryPrimitives.ReadInt32BigEndian(PreAllocatedBuffer);
 
             return result;
         }
 
-#pragma warning disable 675
-
-        protected internal long CreateReadI64(byte[] buf)
+        public override async ValueTask<long> ReadI64Async(CancellationToken cancellationToken)
         {
-            var result =
-                ((long) (buf[0] & 0xff) << 56) |
-                ((long) (buf[1] & 0xff) << 48) |
-                ((long) (buf[2] & 0xff) << 40) |
-                ((long) (buf[3] & 0xff) << 32) |
-                ((long) (buf[4] & 0xff) << 24) |
-                ((long) (buf[5] & 0xff) << 16) |
-                ((long) (buf[6] & 0xff) << 8) |
-                buf[7] & 0xff;
+            cancellationToken.ThrowIfCancellationRequested();
 
-            return result;
+            await Trans.ReadAllAsync(PreAllocatedBuffer, 0, 8, cancellationToken);
+            return BinaryPrimitives.ReadInt64BigEndian(PreAllocatedBuffer);
         }
 
-#pragma warning restore 675
-
-        public override async Task<long> ReadI64Async(CancellationToken cancellationToken)
+        public override async ValueTask<double> ReadDoubleAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<long>(cancellationToken);
-            }
-
-            var i64In = new byte[8];
-            await Trans.ReadAllAsync(i64In, 0, 8, cancellationToken);
-            return CreateReadI64(i64In);
-        }
-
-        public override async Task<double> ReadDoubleAsync(CancellationToken cancellationToken)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<double>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             var d = await ReadI64Async(cancellationToken);
             return BitConverter.Int64BitsToDouble(d);
         }
 
-        public override async Task<byte[]> ReadBinaryAsync(CancellationToken cancellationToken)
+        public override async ValueTask<byte[]> ReadBinaryAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return await Task.FromCanceled<byte[]>(cancellationToken);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             var size = await ReadI32Async(cancellationToken);
+            Transport.CheckReadBytesAvailable(size);
             var buf = new byte[size];
             await Trans.ReadAllAsync(buf, 0, size, cancellationToken);
             return buf;
         }
 
-        private async Task<string> ReadStringBodyAsync(int size, CancellationToken cancellationToken)
+        public override async ValueTask<string> ReadStringAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var size = await ReadI32Async(cancellationToken);
+            return size > 0 ? await ReadStringBodyAsync(size, cancellationToken) : string.Empty;
+        }
+
+        private async ValueTask<string> ReadStringBodyAsync(int size, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (size <= PreAllocatedBuffer.Length)
             {
-                await Task.FromCanceled<string>(cancellationToken);
+                await Trans.ReadAllAsync(PreAllocatedBuffer, 0, size, cancellationToken);
+                return Encoding.UTF8.GetString(PreAllocatedBuffer, 0, size);
             }
 
+            Transport.CheckReadBytesAvailable(size);
             var buf = new byte[size];
             await Trans.ReadAllAsync(buf, 0, size, cancellationToken);
             return Encoding.UTF8.GetString(buf, 0, buf.Length);
+        }
+
+        // Return the minimum number of bytes a type will consume on the wire
+        public override int GetMinSerializedSize(TType type)
+        {
+            switch (type)
+            {
+                case TType.Stop: return 0;
+                case TType.Void: return 0;
+                case TType.Bool: return sizeof(byte);
+                case TType.Byte: return sizeof(byte);
+                case TType.Double: return sizeof(double);
+                case TType.I16: return sizeof(short);
+                case TType.I32: return sizeof(int);
+                case TType.I64: return sizeof(long);
+                case TType.String: return sizeof(int);  // string length
+                case TType.Struct: return 0;  // empty struct
+                case TType.Map: return sizeof(int);  // element count
+                case TType.Set: return sizeof(int);  // element count
+                case TType.List: return sizeof(int);  // element count
+                default: throw new TProtocolException(TProtocolException.NOT_IMPLEMENTED, "unrecognized type code");
+            }
         }
 
         public class Factory : TProtocolFactory

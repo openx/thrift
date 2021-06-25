@@ -21,7 +21,7 @@
 # Please see doc/old-thrift-license.txt in the Thrift distribution for
 # details.
 
-AUTOMAKE_OPTIONS = subdir-objects
+AUTOMAKE_OPTIONS = subdir-objects nostdinc
 
 AM_YFLAGS = -d
 
@@ -37,3 +37,8 @@ thrift_libparse_a_SOURCES = thrift/thrifty.yy \
 
 clean-local:
 	$(RM) thrift/thriftl.cc thrift/thrifty.cc thrift/thrifty.h thrift/thrifty.hh
+
+
+EXTRA_DIST = \
+	thrift/logging.cc \
+	thrift/windows/config.h

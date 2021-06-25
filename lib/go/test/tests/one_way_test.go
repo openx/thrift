@@ -23,10 +23,11 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"onewaytest"
 	"testing"
-	"thrift"
 	"time"
+
+	"github.com/apache/thrift/lib/go/test/gopath/src/onewaytest"
+	"github.com/apache/thrift/lib/go/thrift"
 )
 
 func findPort() net.Addr {
@@ -65,7 +66,7 @@ func TestInitOneway(t *testing.T) {
 }
 
 func TestInitOnewayClient(t *testing.T) {
-	transport := thrift.NewTSocketFromAddrTimeout(addr, TIMEOUT)
+	transport := thrift.NewTSocketFromAddrTimeout(addr, TIMEOUT, TIMEOUT)
 	protocol := thrift.NewTBinaryProtocolTransport(transport)
 	client = onewaytest.NewOneWayClient(thrift.NewTStandardClient(protocol, protocol))
 	err := transport.Open()

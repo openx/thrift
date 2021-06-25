@@ -12,13 +12,7 @@
 
 #
 # Apache Thrift Docker build environment for Ubuntu Bionic
-# Using all stock Ubuntu Bionic packaging except for:
-# - cl: want latest
-# - d: dmd does not come with Ubuntu
-# - dart: does not come with Ubuntu - we use 2.x here
-# - dotnet: does not come with Ubuntu
-# - go: want latest
-# - nodejs: want v8, bionic comes with v6
+# with some updated packages.
 #
 
 FROM buildpack-deps:bionic-scm
@@ -29,7 +23,7 @@ ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update && \
     apt-get dist-upgrade -y && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends --fix-missing \
       apt \
       apt-transport-https \
       apt-utils \
@@ -37,10 +31,6 @@ RUN apt-get update && \
       dirmngr \
       software-properties-common \
       wget
-
-# csharp (mono) - if we ever want a later version
-# RUN echo "deb http://download.mono-project.com/repo/debian xenial main" | tee /etc/apt/sources.list.d/mono.list && \
-#     apt-key adv --keyserver keyserver.ubuntu.com --recv-keys A6A19B38D3D831EF
 
 # Dart
 RUN curl https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
@@ -53,9 +43,13 @@ RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /et
     chown root:root /etc/apt/trusted.gpg.d/microsoft.gpg && \
     chown root:root /etc/apt/sources.list.d/microsoft-prod.list
 
+# erlang
+RUN wget -O- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | apt-key add - && \
+    echo "deb https://packages.erlang-solutions.com/ubuntu bionic contrib" | tee /etc/apt/sources.list.d/erlang.list
+
 # node.js
 RUN curl -sL https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add - && \
-    echo "deb https://deb.nodesource.com/node_8.x bionic main" | tee /etc/apt/sources.list.d/nodesource.list
+    echo "deb https://deb.nodesource.com/node_10.x bionic main" | tee /etc/apt/sources.list.d/nodesource.list
 
 ### install general dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -95,11 +89,7 @@ RUN apt-get install -y --no-install-recommends \
       qtbase5-dev \
       qtbase5-dev-tools
 
-RUN apt-get install -y --no-install-recommends \
-`# csharp (mono) dependencies` \
-      mono-devel
-
-ENV SBCL_VERSION 1.4.15
+ENV SBCL_VERSION 1.5.3
 RUN \
 `# Common Lisp (sbcl) dependencies` \
     curl --version && \
@@ -111,8 +101,8 @@ RUN \
     cd .. && \
     rm -rf sbcl*
 
-ENV D_VERSION     2.083.1
-ENV DMD_DEB       dmd_2.083.1-0_amd64.deb
+ENV D_VERSION     2.087.0
+ENV DMD_DEB       dmd_2.087.0-0_amd64.deb
 RUN \
 `# D dependencies` \
     wget -q http://downloads.dlang.org/releases/2.x/${D_VERSION}/${DMD_DEB} && \
@@ -128,7 +118,7 @@ RUN \
     mv deimos-openssl-1.1.0h/C/* /usr/include/dmd/druntime/import/C/ && \
     rm -rf deimos-openssl-1.1.0h
 
-ENV DART_VERSION 2.1.0-1
+ENV DART_VERSION 2.7.2-1
 RUN apt-get install -y --no-install-recommends \
       `# Dart dependencies` \
       dart=$DART_VERSION
@@ -136,34 +126,28 @@ ENV PATH /usr/lib/dart/bin:$PATH
 
 RUN apt-get install -y --no-install-recommends \
 `# dotnet core dependencies` \
-      dotnet-sdk-2.2
+      dotnet-sdk-5.0
 
 RUN apt-get install -y --no-install-recommends \
 `# Erlang dependencies` \
-      erlang-base \
-      erlang-eunit \
-      erlang-dev \
-      erlang-tools \
-      rebar
+      erlang && \
+    wget https://s3.amazonaws.com/rebar3/rebar3 -O /usr/bin/rebar3 && \
+    chmod 755 /usr/bin/rebar3 && \
+    rebar3 --version
 
 RUN apt-get install -y --no-install-recommends \
 `# GlibC dependencies` \
       libglib2.0-dev
 
 # golang
-ENV GOLANG_VERSION 1.12.1
+ENV GOLANG_VERSION 1.16.2
 ENV GOLANG_DOWNLOAD_URL https://golang.org/dl/go$GOLANG_VERSION.linux-amd64.tar.gz
-ENV GOLANG_DOWNLOAD_SHA256 2a3fdabf665496a0db5f41ec6af7a9b15a49fbe71a85a50ca38b1f13a103aeec
+ENV GOLANG_DOWNLOAD_SHA256 542e936b19542e62679766194364f45141fde55169db2d8d01046555ca9eb4b8
 RUN curl -fsSL "$GOLANG_DOWNLOAD_URL" -o golang.tar.gz && \
       echo "$GOLANG_DOWNLOAD_SHA256  golang.tar.gz" | sha256sum -c - && \
             tar -C /usr/local -xzf golang.tar.gz && \
                   ln -s /usr/local/go/bin/go /usr/local/bin && \
                         rm golang.tar.gz
-
-RUN apt-get install -y --no-install-recommends \
-`# Haskell dependencies` \
-      ghc \
-      cabal-install
 
 RUN apt-get install -y --no-install-recommends \
 `# Haxe dependencies` \
@@ -195,7 +179,8 @@ RUN apt-get install -y --no-install-recommends \
 # Test dependencies for running puppeteer
 RUN apt-get install -y --no-install-recommends \
 `# JS dependencies` \
-      libxss1
+      libxss1 \
+      libxtst6
 
 RUN apt-get install -y --no-install-recommends \
 `# OCaml dependencies` \
@@ -210,7 +195,8 @@ RUN apt-get install -y --no-install-recommends \
       libclass-accessor-class-perl \
       libcrypt-ssleay-perl \
       libio-socket-ssl-perl \
-      libnet-ssleay-perl
+      libnet-ssleay-perl \
+      libtest-exception-perl
 
 RUN apt-get install -y --no-install-recommends \
 `# Php dependencies` \
@@ -256,17 +242,24 @@ RUN apt-get install -y --no-install-recommends \
       ruby-dev \
       ruby-bundler
 
-RUN apt-get install -y --no-install-recommends \
-`# Rust dependencies` \
-      cargo \
-      rustc
+# Rust dependencies
+RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.40.0 -y
+ENV PATH /root/.cargo/bin:$PATH
 
 # Swift on Linux for cross tests
 RUN cd / && \
-    wget --quiet https://swift.org/builds/swift-4.2.1-release/ubuntu1804/swift-4.2.1-RELEASE/swift-4.2.1-RELEASE-ubuntu18.04.tar.gz && \
-    tar xf swift-4.2.1-RELEASE-ubuntu18.04.tar.gz --strip-components=1 && \
-    rm swift-4.2.1-RELEASE-ubuntu18.04.tar.gz && \
+    wget --quiet https://swift.org/builds/swift-5.1.4-release/ubuntu1804/swift-5.1.4-RELEASE/swift-5.1.4-RELEASE-ubuntu18.04.tar.gz && \
+    tar xf swift-5.1.4-RELEASE-ubuntu18.04.tar.gz --strip-components=1 && \
+    rm swift-5.1.4-RELEASE-ubuntu18.04.tar.gz && \
     swift --version
+
+# Locale(s) for cpp unit tests
+RUN apt-get install -y --no-install-recommends \
+`# Locale dependencies` \
+      locales && \
+    locale-gen en_US.UTF-8 && \
+    locale-gen de_DE.UTF-8 && \
+    update-locale
 
 # cppcheck-1.82 has a nasty cpp parser bug, so we're using something newer
 RUN apt-get install -y --no-install-recommends \

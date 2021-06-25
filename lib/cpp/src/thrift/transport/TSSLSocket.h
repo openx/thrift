@@ -111,37 +111,40 @@ protected:
   /**
    * Constructor.
    */
-  TSSLSocket(std::shared_ptr<SSLContext> ctx);
+  TSSLSocket(std::shared_ptr<SSLContext> ctx, std::shared_ptr<TConfiguration> config = nullptr);
   /**
    * Constructor with an interrupt signal.
    */
-  TSSLSocket(std::shared_ptr<SSLContext> ctx, std::shared_ptr<THRIFT_SOCKET> interruptListener);
+  TSSLSocket(std::shared_ptr<SSLContext> ctx, std::shared_ptr<THRIFT_SOCKET> interruptListener,
+            std::shared_ptr<TConfiguration> config = nullptr);
   /**
    * Constructor, create an instance of TSSLSocket given an existing socket.
    *
    * @param socket An existing socket
    */
-  TSSLSocket(std::shared_ptr<SSLContext> ctx, THRIFT_SOCKET socket);
+  TSSLSocket(std::shared_ptr<SSLContext> ctx, THRIFT_SOCKET socket, std::shared_ptr<TConfiguration> config = nullptr);
   /**
    * Constructor, create an instance of TSSLSocket given an existing socket that can be interrupted.
    *
    * @param socket An existing socket
    */
-  TSSLSocket(std::shared_ptr<SSLContext> ctx, THRIFT_SOCKET socket, std::shared_ptr<THRIFT_SOCKET> interruptListener);
+  TSSLSocket(std::shared_ptr<SSLContext> ctx, THRIFT_SOCKET socket, std::shared_ptr<THRIFT_SOCKET> interruptListener,
+            std::shared_ptr<TConfiguration> config = nullptr);
    /**
    * Constructor.
    *
    * @param host  Remote host name
    * @param port  Remote port number
    */
-  TSSLSocket(std::shared_ptr<SSLContext> ctx, std::string host, int port);
+  TSSLSocket(std::shared_ptr<SSLContext> ctx, std::string host, int port, std::shared_ptr<TConfiguration> config = nullptr);
     /**
   * Constructor with an interrupt signal.
   *
   * @param host  Remote host name
   * @param port  Remote port number
   */
-    TSSLSocket(std::shared_ptr<SSLContext> ctx, std::string host, int port, std::shared_ptr<THRIFT_SOCKET> interruptListener);
+    TSSLSocket(std::shared_ptr<SSLContext> ctx, std::string host, int port, std::shared_ptr<THRIFT_SOCKET> interruptListener,
+              std::shared_ptr<TConfiguration> config = nullptr);
   /**
    * Authorize peer access after SSL handshake completes.
    */
@@ -261,6 +264,7 @@ public:
    * @param format Certificate file format
    */
   virtual void loadCertificate(const char* path, const char* format = "PEM");
+  virtual void loadCertificateFromBuffer(const char* aCertificate, const char* format = "PEM");
   /**
    * Load private key.
    *
@@ -268,12 +272,14 @@ public:
    * @param format Private key file format
    */
   virtual void loadPrivateKey(const char* path, const char* format = "PEM");
+  virtual void loadPrivateKeyFromBuffer(const char* aPrivateKey, const char* format = "PEM");
   /**
    * Load trusted certificates from specified file.
    *
    * @param path Path to trusted certificate file
    */
   virtual void loadTrustedCertificates(const char* path, const char* capath = nullptr);
+  virtual void loadTrustedCertificatesFromBuffer(const char* aCertificate, const char* aChain = nullptr);
   /**
    * Default randomize method.
    */

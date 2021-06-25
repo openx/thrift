@@ -44,17 +44,17 @@
 //! | transport |
 //! +-----------+
 //! ```
+//!
+//! # Tutorial
+//!
+//! For an example of how to setup a simple client and server using this crate
+//! see the [tutorial].
+//!
+//! [tutorial]: https://github.com/apache/thrift/tree/master/tutorial/rs
 
 #![crate_type = "lib"]
 #![doc(test(attr(allow(unused_variables), deny(warnings))))]
-
-extern crate byteorder;
-extern crate ordered_float;
-extern crate integer_encoding;
-extern crate threadpool;
-
-#[macro_use]
-extern crate log;
+#![deny(bare_trait_objects)]
 
 // NOTE: this macro has to be defined before any modules. See:
 // https://danielkeep.github.io/quick-intro-to-macros.html#some-more-gotchas
@@ -75,10 +75,10 @@ pub mod server;
 pub mod transport;
 
 mod errors;
-pub use errors::*;
+pub use crate::errors::*;
 
 mod autogen;
-pub use autogen::*;
+pub use crate::autogen::*;
 
 /// Result type returned by all runtime library functions.
 ///
@@ -87,4 +87,5 @@ pub use autogen::*;
 pub type Result<T> = std::result::Result<T, self::Error>;
 
 // Re-export ordered-float, since it is used by the generator
-pub use ordered_float::OrderedFloat as OrderedFloat;
+// FIXME: check the guidance around type reexports
+pub use ordered_float::OrderedFloat;

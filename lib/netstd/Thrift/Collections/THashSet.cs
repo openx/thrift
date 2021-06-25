@@ -23,45 +23,61 @@ namespace Thrift.Collections
     // ReSharper disable once InconsistentNaming
     public class THashSet<T> : ICollection<T>
     {
-        private readonly HashSet<T> _set = new HashSet<T>();
+        private readonly HashSet<T> Items;
 
-        public int Count => _set.Count;
+        public THashSet()
+        {
+            Items = new HashSet<T>();
+        }
+
+        public THashSet(int capacity)
+        {
+            #if NET5_0
+            Items = new HashSet<T>(capacity);
+            #elif NETFRAMEWORK || NETSTANDARD
+            Items = new HashSet<T>(/*capacity not supported*/);
+            #else
+            #error Unknown platform
+            #endif
+        }
+
+        public int Count => Items.Count;
 
         public bool IsReadOnly => false;
 
         public void Add(T item)
         {
-            _set.Add(item);
+            Items.Add(item);
         }
 
         public void Clear()
         {
-            _set.Clear();
+            Items.Clear();
         }
 
         public bool Contains(T item)
         {
-            return _set.Contains(item);
+            return Items.Contains(item);
         }
 
         public void CopyTo(T[] array, int arrayIndex)
         {
-            _set.CopyTo(array, arrayIndex);
+            Items.CopyTo(array, arrayIndex);
         }
 
-        public IEnumerator GetEnumerator()
+        IEnumerator IEnumerable.GetEnumerator()
         {
-            return _set.GetEnumerator();
+            return Items.GetEnumerator();
         }
 
-        IEnumerator<T> IEnumerable<T>.GetEnumerator()
+        public IEnumerator<T> GetEnumerator()
         {
-            return ((IEnumerable<T>) _set).GetEnumerator();
+            return ((IEnumerable<T>) Items).GetEnumerator();
         }
 
         public bool Remove(T item)
         {
-            return _set.Remove(item);
+            return Items.Remove(item);
         }
     }
 }

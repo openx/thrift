@@ -29,6 +29,7 @@ uses
   Math,
   Generics.Collections,
   Thrift.Collections,
+  Thrift.Configuration,
   Thrift.Transport,
   Thrift.Exception,
   Thrift.Utils,
@@ -36,24 +37,29 @@ uses
   Thrift.Stream;
 
 type
-  TWinHTTPClientImpl = class( TTransportImpl, IHTTPClient)
-  private
+  TWinHTTPClientImpl = class( TEndpointTransportBase, IHTTPClient)
+  strict private
     FUri : string;
     FInputStream : IThriftStream;
-    FOutputMemoryStream : TMemoryStream;
+    FOutputMemoryStream : TThriftMemoryStream;
     FDnsResolveTimeout : Integer;
     FConnectionTimeout : Integer;
     FSendTimeout : Integer;
     FReadTimeout : Integer;
     FCustomHeaders : IThriftDictionary<string,string>;
+    FSecureProtocols : TSecureProtocols;
 
     function CreateRequest: IWinHTTPRequest;
+    function SecureProtocolsAsWinHTTPFlags : Cardinal;
 
-  private type
+  strict private
+    type
+      TErrorInfo = ( SplitUrl, WinHTTPSession, WinHTTPConnection, WinHTTPRequest, RequestSetup, AutoProxy );
+
       THTTPResponseStream = class( TThriftStreamImpl)
-      private
+      strict private
         FRequest : IWinHTTPRequest;
-      protected
+      strict protected
         procedure Write( const pBuf : Pointer; offset: Integer; count: Integer); override;
         function Read( const pBuf : Pointer; const buflen : Integer; offset: Integer; count: Integer): Integer; override;
         procedure Open; override;
@@ -66,7 +72,7 @@ type
         destructor Destroy; override;
       end;
 
-  protected
+  strict protected
     function GetIsOpen: Boolean; override;
     procedure Open(); override;
     procedure Close(); override;
@@ -82,37 +88,46 @@ type
     function GetSendTimeout: Integer;
     procedure SetReadTimeout(const Value: Integer);
     function GetReadTimeout: Integer;
+    function GetSecureProtocols : TSecureProtocols;
+    procedure SetSecureProtocols( const value : TSecureProtocols);
 
     function GetCustomHeaders: IThriftDictionary<string,string>;
     procedure SendRequest;
+
     property DnsResolveTimeout: Integer read GetDnsResolveTimeout write SetDnsResolveTimeout;
     property ConnectionTimeout: Integer read GetConnectionTimeout write SetConnectionTimeout;
     property SendTimeout: Integer read GetSendTimeout write SetSendTimeout;
     property ReadTimeout: Integer read GetReadTimeout write SetReadTimeout;
     property CustomHeaders: IThriftDictionary<string,string> read GetCustomHeaders;
   public
-    constructor Create( const AUri: string);
+    constructor Create( const aUri: string; const aConfig : IThriftConfiguration = nil);
     destructor Destroy; override;
   end;
 
 implementation
 
+const
+  WINHTTP_CONNECTION_TIMEOUT = 60 * 1000;
+  WINHTTP_SENDRECV_TIMEOUT   = 30 * 1000;
+
 
 { TWinHTTPClientImpl }
 
-constructor TWinHTTPClientImpl.Create(const AUri: string);
+constructor TWinHTTPClientImpl.Create( const aUri: string; const aConfig : IThriftConfiguration);
 begin
-  inherited Create;
+  inherited Create( aConfig);
   FUri := AUri;
 
   // defaults according to MSDN
   FDnsResolveTimeout := 0; // no timeout
-  FConnectionTimeout := 60 * 1000;
-  FSendTimeout       := 30 * 1000;
-  FReadTimeout       := 30 * 1000;
+  FConnectionTimeout := WINHTTP_CONNECTION_TIMEOUT;
+  FSendTimeout       := WINHTTP_SENDRECV_TIMEOUT;
+  FReadTimeout       := WINHTTP_SENDRECV_TIMEOUT;
+
+  FSecureProtocols := DEFAULT_THRIFT_SECUREPROTOCOLS;
 
   FCustomHeaders := TThriftDictionaryImpl<string,string>.Create;
-  FOutputMemoryStream := TMemoryStream.Create;
+  FOutputMemoryStream := TThriftMemoryStream.Create;
 end;
 
 destructor TWinHTTPClientImpl.Destroy;
@@ -124,29 +139,72 @@ end;
 
 function TWinHTTPClientImpl.CreateRequest: IWinHTTPRequest;
 var
-  pair : TPair<string,string>;
+  pair    : TPair<string,string>;
   session : IWinHTTPSession;
   connect : IWinHTTPConnection;
   url     : IWinHTTPUrl;
   sPath   : string;
+  info    : TErrorInfo;
 begin
-  url := TWinHTTPUrlImpl.Create( FUri);
+  info := TErrorInfo.SplitUrl;
+  try
+    url := TWinHTTPUrlImpl.Create( FUri);
 
-  session := TWinHTTPSessionImpl.Create('Apache Thrift Delphi Client');
-  connect := session.Connect( url.HostName, url.Port);
+    info := TErrorInfo.WinHTTPSession;
+    session := TWinHTTPSessionImpl.Create('Apache Thrift Delphi WinHTTP');
+    session.EnableSecureProtocols( SecureProtocolsAsWinHTTPFlags);
 
-  sPath   := url.UrlPath + url.ExtraInfo;
-  result  := connect.OpenRequest( (url.Scheme = 'https'), 'POST', sPath, 'application/x-thrift');
+    info := TErrorInfo.WinHTTPConnection;
+    connect := session.Connect( url.HostName, url.Port);
 
-  // setting a timeout value to 0 (zero) means "no timeout" for that setting
-  result.SetTimeouts( DnsResolveTimeout, ConnectionTimeout, SendTimeout, ReadTimeout);
+    info := TErrorInfo.WinHTTPRequest;
+    sPath   := url.UrlPath + url.ExtraInfo;
+    result  := connect.OpenRequest( (url.Scheme = 'https'), 'POST', sPath, THRIFT_MIMETYPE);
 
-  result.AddRequestHeader( 'Content-Type: application/x-thrift', WINHTTP_ADDREQ_FLAG_ADD);
+    // setting a timeout value to 0 (zero) means "no timeout" for that setting
+    info := TErrorInfo.RequestSetup;
+    result.SetTimeouts( DnsResolveTimeout, ConnectionTimeout, SendTimeout, ReadTimeout);
 
-  for pair in FCustomHeaders do begin
-    Result.AddRequestHeader( pair.Key +': '+ pair.Value, WINHTTP_ADDREQ_FLAG_ADD);
+    // headers
+    result.AddRequestHeader( 'Content-Type: '+THRIFT_MIMETYPE, WINHTTP_ADDREQ_FLAG_ADD);
+    for pair in FCustomHeaders do begin
+      Result.AddRequestHeader( pair.Key +': '+ pair.Value, WINHTTP_ADDREQ_FLAG_ADD);
+    end;
+
+    // enable automatic gzip,deflate decompression
+    result.EnableAutomaticContentDecompression(TRUE);
+
+    // AutoProxy support
+    info := TErrorInfo.AutoProxy;
+    result.TryAutoProxy( FUri);
+  except
+    on e:TException do raise;
+    on e:Exception do raise TTransportExceptionUnknown.Create( e.Message+' (at '+EnumUtils<TErrorInfo>.ToString(Ord(info))+')');
   end;
 end;
+
+
+function TWinHTTPClientImpl.SecureProtocolsAsWinHTTPFlags : Cardinal;
+const
+  PROTOCOL_MAPPING : array[TSecureProtocol] of Cardinal = (
+    WINHTTP_FLAG_SECURE_PROTOCOL_SSL2,
+    WINHTTP_FLAG_SECURE_PROTOCOL_SSL3,
+    WINHTTP_FLAG_SECURE_PROTOCOL_TLS1,
+    WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1,
+    WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2
+  );
+var
+  prot : TSecureProtocol;
+  protos : TSecureProtocols;
+begin
+  result := 0;
+  protos := GetSecureProtocols;
+  for prot := Low(TSecureProtocol) to High(TSecureProtocol) do begin
+    if prot in protos
+    then result := result or PROTOCOL_MAPPING[prot];
+  end;
+end;
+
 
 function TWinHTTPClientImpl.GetDnsResolveTimeout: Integer;
 begin
@@ -188,6 +246,16 @@ begin
   FReadTimeout := Value;
 end;
 
+function TWinHTTPClientImpl.GetSecureProtocols : TSecureProtocols;
+begin
+  Result := FSecureProtocols;
+end;
+
+procedure TWinHTTPClientImpl.SetSecureProtocols( const value : TSecureProtocols);
+begin
+  FSecureProtocols := Value;
+end;
+
 function TWinHTTPClientImpl.GetCustomHeaders: IThriftDictionary<string,string>;
 begin
   Result := FCustomHeaders;
@@ -195,13 +263,13 @@ end;
 
 function TWinHTTPClientImpl.GetIsOpen: Boolean;
 begin
-  Result := True;
+  Result := Assigned( FOutputMemoryStream);
 end;
 
 procedure TWinHTTPClientImpl.Open;
 begin
   FreeAndNil( FOutputMemoryStream);
-  FOutputMemoryStream := TMemoryStream.Create;
+  FOutputMemoryStream := TThriftMemoryStream.Create;
 end;
 
 procedure TWinHTTPClientImpl.Close;
@@ -216,7 +284,7 @@ begin
     SendRequest;
   finally
     FreeAndNil( FOutputMemoryStream);
-    FOutputMemoryStream := TMemoryStream.Create;
+    FOutputMemoryStream := TThriftMemoryStream.Create;
     ASSERT( FOutputMemoryStream <> nil);
   end;
 end;
@@ -228,7 +296,8 @@ begin
   end;
 
   try
-    Result := FInputStream.Read( pBuf, buflen, off, len)
+    Result := FInputStream.Read( pBuf, buflen, off, len);
+    CountConsumedMessageBytes( result);
   except
     on E: Exception
     do raise TTransportExceptionUnknown.Create(E.Message);
@@ -237,9 +306,11 @@ end;
 
 procedure TWinHTTPClientImpl.SendRequest;
 var
-  http : IWinHTTPRequest;
+  http  : IWinHTTPRequest;
   pData : PByte;
-  len : Integer;
+  len   : Integer;
+  error, dwSize : Cardinal;
+  sMsg  : string;
 begin
   http := CreateRequest;
 
@@ -247,14 +318,26 @@ begin
   len   := FOutputMemoryStream.Size;
 
   // send all data immediately, since we have it in memory
-  if not http.SendRequest( pData, len, 0)
-  then raise TTransportExceptionUnknown.Create('send request error');
+  if not http.SendRequest( pData, len, 0) then begin
+    error := Cardinal( GetLastError);
+    sMsg  := 'WinHTTP send error '+IntToStr(Int64(error))+' '+WinHttpSysErrorMessage(error);
+    raise TTransportExceptionUnknown.Create(sMsg);
+  end;
 
   // end request and start receiving
-  if not http.FlushAndReceiveResponse
-  then raise TTransportExceptionInterrupted.Create('flush/receive error');
+  if not http.FlushAndReceiveResponse then begin
+    error := Cardinal( GetLastError);
+    sMsg  := 'WinHTTP recv error '+IntToStr(Int64(error))+' '+WinHttpSysErrorMessage(error);
+    if error = ERROR_WINHTTP_TIMEOUT
+    then raise TTransportExceptionTimedOut.Create( sMsg)
+    else raise TTransportExceptionInterrupted.Create( sMsg);
+  end;
 
-  FInputStream := THTTPResponseStream.Create(http);
+  // we're about to receive a new message, so reset everyting
+  ResetConsumedMessageSize(-1);
+  FInputStream := THTTPResponseStream.Create( http);
+  if http.QueryTotalResponseSize( dwSize)  // FALSE indicates "no info available"
+  then UpdateKnownMessageSize( dwSize);
 end;
 
 procedure TWinHTTPClientImpl.Write( const pBuf : Pointer; off, len : Integer);

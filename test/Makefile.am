@@ -30,11 +30,6 @@ SUBDIRS += cl
 PRECROSS_TARGET += precross-cl
 endif
 
-if WITH_MONO
-SUBDIRS += csharp
-PRECROSS_TARGET += precross-csharp
-endif
-
 if WITH_CPP
 SUBDIRS += cpp
 PRECROSS_TARGET += precross-cpp
@@ -69,16 +64,11 @@ SUBDIRS += rb
 PRECROSS_TARGET += precross-rb
 endif
 
-if WITH_HASKELL
-SUBDIRS += hs
-endif
-
 if WITH_HAXE
 SUBDIRS += haxe
 endif
 
 if WITH_DOTNET
-SUBDIRS += netcore
 SUBDIRS += netstd
 endif
 
@@ -133,7 +123,6 @@ EXTRA_DIST = \
 	crossrunner \
 	dart \
 	erl \
-	hs \
 	keys \
 	lua \
 	ocaml \
@@ -156,8 +145,10 @@ EXTRA_DIST = \
 	EnumTest.thrift \
 	FullCamelTest.thrift \
 	Include.thrift \
+	Identifiers.thrift \
 	Int64Test.thrift \
 	JavaBeansTest.thrift \
+	JavaBinaryDefault.thrift \
 	JavaDeepCopyTest.thrift \
 	JavaTypes.thrift \
 	JsDeepConstructorTest.thrift \
@@ -171,7 +162,10 @@ EXTRA_DIST = \
 	StressTest.thrift \
 	ThriftTest.thrift \
 	TypedefTest.thrift \
+	Types.thrift \
 	UnsafeTypes.thrift \
+	Service.thrift \
+	SpecificNameTest.thrift \
 	known_failures_Linux.json \
 	test.py \
 	tests.json \

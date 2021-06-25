@@ -109,9 +109,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       rebar
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-`# Haskell dependencies` \
-      ghc \
-      cabal-install \
 `# Haxe dependencies` \
       neko \
       neko-dev \
@@ -123,11 +120,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       nodejs-dev \
       nodejs-legacy \
       npm
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-`# CSharp dependencies` \
-      libmono-system-web2.0-cil \
-      mono-devel
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
 `# D dependencies` \

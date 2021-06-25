@@ -75,10 +75,6 @@ RUN apt-get install -y --no-install-recommends \
       qtbase5-dev-tools
 
 RUN apt-get install -y --no-install-recommends \
-`# csharp (mono) dependencies` \
-      mono-devel
-
-RUN apt-get install -y --no-install-recommends \
 `# D dependencies` \
       dmd-bin=2.070.2-0 \
       libphobos2-dev=2.070.2-0 \
@@ -122,11 +118,6 @@ RUN curl -fsSL "$GOLANG_DOWNLOAD_URL" -o golang.tar.gz && \
       tar -C /usr/local -xzf golang.tar.gz && \
       ln -s /usr/local/go/bin/go /usr/local/bin && \
       rm golang.tar.gz
-
-RUN apt-get install -y --no-install-recommends \
-`# Haskell dependencies` \
-      ghc \
-      cabal-install
 
 # disabled because it cores while installing
 # RUN apt-get install -y --no-install-recommends \

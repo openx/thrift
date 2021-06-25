@@ -63,6 +63,40 @@ type
   LPURL_COMPONENTSW = LPURL_COMPONENTS;
 
 
+  // When retrieving proxy data, an application must free the lpszProxy and
+  // lpszProxyBypass strings contained in this structure (if they are non-NULL)
+  // using the GlobalFree function.
+  LPWINHTTP_PROXY_INFO = ^WINHTTP_PROXY_INFO;
+  WINHTTP_PROXY_INFO = record
+    dwAccessType    : DWORD;      // see WINHTTP_ACCESS_* types below
+    lpszProxy       : LPWSTR;     // proxy server list
+    lpszProxyBypass : LPWSTR;     // proxy bypass list
+  end;
+
+  LPWINHTTP_PROXY_INFOW = ^WINHTTP_PROXY_INFOW;
+  WINHTTP_PROXY_INFOW   = WINHTTP_PROXY_INFO;
+
+
+  WINHTTP_AUTOPROXY_OPTIONS = record
+    dwFlags                : DWORD;
+    dwAutoDetectFlags      : DWORD;
+    lpszAutoConfigUrl      : LPCWSTR;
+    lpvReserved            : LPVOID;
+    dwReserved             : DWORD;
+    fAutoLogonIfChallenged : BOOL;
+  end;
+
+
+  WINHTTP_CURRENT_USER_IE_PROXY_CONFIG = record
+    fAutoDetect       : BOOL;
+    lpszAutoConfigUrl : LPWSTR;
+    lpszProxy         : LPWSTR;
+    lpszProxyBypass   : LPWSTR;
+  end;
+
+
+
+
 function WinHttpCloseHandle( aHandle : HINTERNET) : BOOL;  stdcall;
 
 function WinHttpOpen( const pszAgentW       : LPCWSTR;
@@ -84,6 +118,16 @@ function WinHttpOpenRequest( const hConnect : HINTERNET;
                              const dwFlags : DWORD
                              ) : HINTERNET;  stdcall;
 
+function WinHttpQueryOption( const hInternet : HINTERNET;
+                             const dwOption : DWORD;
+                             const pBuffer : Pointer;
+                             var dwBufferLength : DWORD) : BOOL;  stdcall;
+
+function WinHttpSetOption( const hInternet : HINTERNET;
+                           const dwOption : DWORD;
+                           const pBuffer : Pointer;
+                           const dwBufferLength : DWORD) : BOOL;  stdcall;
+
 function WinHttpSetTimeouts( const hRequestOrSession : HINTERNET;
                              const aResolveTimeout, aConnectTimeout, aSendTimeout, aReceiveTimeout : Int32
                              ) : BOOL;  stdcall;
@@ -93,6 +137,16 @@ function WinHttpAddRequestHeaders( const hRequest : HINTERNET;
                                    const dwHeadersLengthInChars : DWORD;
                                    const dwModifiers : DWORD
                                    ) : BOOL;  stdcall;
+
+function WinHttpGetProxyForUrl( const hSession  : HINTERNET;
+                                const lpcwszUrl : LPCWSTR;
+                                const options   : WINHTTP_AUTOPROXY_OPTIONS;
+                                const info      : WINHTTP_PROXY_INFO
+                                ) : BOOL;  stdcall;
+
+function WinHttpGetIEProxyConfigForCurrentUser( var config : WINHTTP_CURRENT_USER_IE_PROXY_CONFIG
+                                                ) : BOOL;  stdcall;
+
 
 function WinHttpSendRequest( const hRequest : HINTERNET;
                              const lpszHeaders : LPCWSTR;
@@ -151,6 +205,8 @@ const
   // flags for WinHttpOpen():
   WINHTTP_FLAG_ASYNC = $10000000;  // want async session, requires WinHttpSetStatusCallback() usage
 
+  WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH = 0;
+
   // ports
   INTERNET_DEFAULT_PORT = 0;           // use the protocol-specific default (80 or 443)
 
@@ -164,8 +220,16 @@ const
   WINHTTP_FLAG_ESCAPE_DISABLE_QUERY  = $00000080;  // if escaping enabled escape path part, but do not escape query
 
   // flags for WinHttpSendRequest():
+  WINHTTP_NO_PROXY_NAME           = nil;
+  WINHTTP_NO_PROXY_BYPASS         = nil;
+  WINHTTP_NO_CLIENT_CERT_CONTEXT  = nil;
+  WINHTTP_NO_REFERER              = nil;
+  WINHTTP_DEFAULT_ACCEPT_TYPES    = nil;
   WINHTTP_NO_ADDITIONAL_HEADERS   = nil;
   WINHTTP_NO_REQUEST_DATA         = nil;
+  WINHTTP_HEADER_NAME_BY_INDEX    = nil;
+  WINHTTP_NO_OUTPUT_BUFFER        = nil;
+  WINHTTP_NO_HEADER_INDEX         = nil;
 
   // WinHttpAddRequestHeaders() dwModifiers
   WINHTTP_ADDREQ_INDEX_MASK = $0000FFFF;
@@ -192,6 +256,256 @@ const
 
   INTERNET_SCHEME_HTTP  = INTERNET_SCHEME(1);
   INTERNET_SCHEME_HTTPS = INTERNET_SCHEME(2);
+
+  // options manifests for WinHttp{Query|Set}Option
+  WINHTTP_OPTION_CALLBACK = 1;
+  WINHTTP_OPTION_RESOLVE_TIMEOUT = 2;
+  WINHTTP_OPTION_CONNECT_TIMEOUT = 3;
+  WINHTTP_OPTION_CONNECT_RETRIES = 4;
+  WINHTTP_OPTION_SEND_TIMEOUT = 5;
+  WINHTTP_OPTION_RECEIVE_TIMEOUT = 6;
+  WINHTTP_OPTION_RECEIVE_RESPONSE_TIMEOUT = 7;
+  WINHTTP_OPTION_HANDLE_TYPE = 9;
+  WINHTTP_OPTION_READ_BUFFER_SIZE = 12;
+  WINHTTP_OPTION_WRITE_BUFFER_SIZE = 13;
+  WINHTTP_OPTION_PARENT_HANDLE = 21;
+  WINHTTP_OPTION_EXTENDED_ERROR = 24;
+  WINHTTP_OPTION_SECURITY_FLAGS = 31;
+  WINHTTP_OPTION_SECURITY_CERTIFICATE_STRUCT = 32;
+  WINHTTP_OPTION_URL = 34;
+  WINHTTP_OPTION_SECURITY_KEY_BITNESS = 36;
+  WINHTTP_OPTION_PROXY = 38;
+  WINHTTP_OPTION_USER_AGENT = 41;
+  WINHTTP_OPTION_CONTEXT_VALUE = 45;
+  WINHTTP_OPTION_CLIENT_CERT_CONTEXT = 47;
+  WINHTTP_OPTION_REQUEST_PRIORITY = 58;
+  WINHTTP_OPTION_HTTP_VERSION = 59;
+  WINHTTP_OPTION_DISABLE_FEATURE = 63;
+  WINHTTP_OPTION_CODEPAGE = 68;
+  WINHTTP_OPTION_MAX_CONNS_PER_SERVER = 73;
+  WINHTTP_OPTION_MAX_CONNS_PER_1_0_SERVER = 74;
+  WINHTTP_OPTION_AUTOLOGON_POLICY = 77;
+  WINHTTP_OPTION_SERVER_CERT_CONTEXT = 78;
+  WINHTTP_OPTION_ENABLE_FEATURE = 79;
+  WINHTTP_OPTION_WORKER_THREAD_COUNT = 80;
+  WINHTTP_OPTION_PASSPORT_COBRANDING_TEXT = 81;
+  WINHTTP_OPTION_PASSPORT_COBRANDING_URL = 82;
+  WINHTTP_OPTION_CONFIGURE_PASSPORT_AUTH = 83;
+  WINHTTP_OPTION_SECURE_PROTOCOLS = 84;
+  WINHTTP_OPTION_ENABLETRACING = 85;
+  WINHTTP_OPTION_PASSPORT_SIGN_OUT = 86;
+  WINHTTP_OPTION_PASSPORT_RETURN_URL = 87;
+  WINHTTP_OPTION_REDIRECT_POLICY = 88;
+  WINHTTP_OPTION_MAX_HTTP_AUTOMATIC_REDIRECTS = 89;
+  WINHTTP_OPTION_MAX_HTTP_STATUS_CONTINUE = 90;
+  WINHTTP_OPTION_MAX_RESPONSE_HEADER_SIZE = 91;
+  WINHTTP_OPTION_MAX_RESPONSE_DRAIN_SIZE = 92;
+  WINHTTP_OPTION_CONNECTION_INFO = 93;
+  WINHTTP_OPTION_CLIENT_CERT_ISSUER_LIST = 94;
+  WINHTTP_OPTION_SPN = 96;
+  WINHTTP_OPTION_GLOBAL_PROXY_CREDS = 97;
+  WINHTTP_OPTION_GLOBAL_SERVER_CREDS = 98;
+  WINHTTP_OPTION_UNLOAD_NOTIFY_EVENT = 99;
+  WINHTTP_OPTION_REJECT_USERPWD_IN_URL = 100;
+  WINHTTP_OPTION_USE_GLOBAL_SERVER_CREDENTIALS = 101;
+  WINHTTP_OPTION_RECEIVE_PROXY_CONNECT_RESPONSE = 103;
+  WINHTTP_OPTION_IS_PROXY_CONNECT_RESPONSE = 104;
+  WINHTTP_OPTION_SERVER_SPN_USED = 106;
+  WINHTTP_OPTION_PROXY_SPN_USED = 107;
+  WINHTTP_OPTION_SERVER_CBT = 108;
+  // options for newer WinHTTP versions
+  WINHTTP_OPTION_DECOMPRESSION = 118;
+  //
+  WINHTTP_FIRST_OPTION = WINHTTP_OPTION_CALLBACK;
+  //WINHTTP_LAST_OPTION = WINHTTP_OPTION_SERVER_CBT;
+
+  WINHTTP_OPTION_USERNAME = $1000;
+  WINHTTP_OPTION_PASSWORD = $1001;
+  WINHTTP_OPTION_PROXY_USERNAME = $1002;
+  WINHTTP_OPTION_PROXY_PASSWORD = $1003;
+
+  // manifest value for WINHTTP_OPTION_MAX_CONNS_PER_SERVER and WINHTTP_OPTION_MAX_CONNS_PER_1_0_SERVER
+  WINHTTP_CONNS_PER_SERVER_UNLIMITED    = $FFFFFFFF;
+
+  // values for WINHTTP_OPTION_AUTOLOGON_POLICY
+  WINHTTP_AUTOLOGON_SECURITY_LEVEL_MEDIUM  = 0;
+  WINHTTP_AUTOLOGON_SECURITY_LEVEL_LOW     = 1;
+  WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH    = 2;
+
+  WINHTTP_AUTOLOGON_SECURITY_LEVEL_DEFAULT = WINHTTP_AUTOLOGON_SECURITY_LEVEL_MEDIUM;
+
+  // values for WINHTTP_OPTION_REDIRECT_POLICY
+  WINHTTP_OPTION_REDIRECT_POLICY_NEVER                  = 0;
+  WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP = 1;
+  WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS                 = 2;
+
+  WINHTTP_OPTION_REDIRECT_POLICY_LAST      = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+  WINHTTP_OPTION_REDIRECT_POLICY_DEFAULT   = WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP;
+
+  WINHTTP_DISABLE_PASSPORT_AUTH      = $00000000;
+  WINHTTP_ENABLE_PASSPORT_AUTH       = $10000000;
+  WINHTTP_DISABLE_PASSPORT_KEYRING   = $20000000;
+  WINHTTP_ENABLE_PASSPORT_KEYRING    = $40000000;
+
+  // values for WINHTTP_OPTION_DISABLE_FEATURE
+  WINHTTP_DISABLE_COOKIES            = $00000001;
+  WINHTTP_DISABLE_REDIRECTS          = $00000002;
+  WINHTTP_DISABLE_AUTHENTICATION     = $00000004;
+  WINHTTP_DISABLE_KEEP_ALIVE         = $00000008;
+
+  // values for WINHTTP_OPTION_ENABLE_FEATURE
+  WINHTTP_ENABLE_SSL_REVOCATION            = $00000001;
+  WINHTTP_ENABLE_SSL_REVERT_IMPERSONATION  = $00000002;
+
+  // values for WINHTTP_OPTION_SPN
+  WINHTTP_DISABLE_SPN_SERVER_PORT    = $00000000;
+  WINHTTP_ENABLE_SPN_SERVER_PORT     = $00000001;
+  WINHTTP_OPTION_SPN_MASK            = WINHTTP_ENABLE_SPN_SERVER_PORT;
+
+  // winhttp handle types
+  WINHTTP_HANDLE_TYPE_SESSION  = 1;
+  WINHTTP_HANDLE_TYPE_CONNECT  = 2;
+  WINHTTP_HANDLE_TYPE_REQUEST  = 3;
+
+  // values for auth schemes
+  WINHTTP_AUTH_SCHEME_BASIC      = $00000001;
+  WINHTTP_AUTH_SCHEME_NTLM       = $00000002;
+  WINHTTP_AUTH_SCHEME_PASSPORT   = $00000004;
+  WINHTTP_AUTH_SCHEME_DIGEST     = $00000008;
+  WINHTTP_AUTH_SCHEME_NEGOTIATE  = $00000010;
+
+  // WinHttp supported Authentication Targets
+  WINHTTP_AUTH_TARGET_SERVER     = $00000000;
+  WINHTTP_AUTH_TARGET_PROXY      = $00000001;
+
+  // options for WINHTTP_OPTION_DECOMPRESSION
+  WINHTTP_DECOMPRESSION_FLAG_GZIP    = $00000001;
+  WINHTTP_DECOMPRESSION_FLAG_DEFLATE = $00000002;
+  WINHTTP_DECOMPRESSION_FLAG_ALL     = WINHTTP_DECOMPRESSION_FLAG_GZIP
+                                    or WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
+
+  // values for WINHTTP_OPTION_SECURITY_FLAGS
+
+  // query only
+  SECURITY_FLAG_SECURE           = $00000001; // can query only
+  SECURITY_FLAG_STRENGTH_WEAK    = $10000000;
+  SECURITY_FLAG_STRENGTH_MEDIUM  = $40000000;
+  SECURITY_FLAG_STRENGTH_STRONG  = $20000000;
+
+  // query flags
+  WINHTTP_QUERY_MIME_VERSION                 = 0;
+  WINHTTP_QUERY_CONTENT_TYPE                 = 1;
+  WINHTTP_QUERY_CONTENT_TRANSFER_ENCODING    = 2;
+  WINHTTP_QUERY_CONTENT_ID                   = 3;
+  WINHTTP_QUERY_CONTENT_DESCRIPTION          = 4;
+  WINHTTP_QUERY_CONTENT_LENGTH               = 5;
+  WINHTTP_QUERY_CONTENT_LANGUAGE             = 6;
+  WINHTTP_QUERY_ALLOW                        = 7;
+  WINHTTP_QUERY_PUBLIC                       = 8;
+  WINHTTP_QUERY_DATE                         = 9;
+  WINHTTP_QUERY_EXPIRES                      = 10;
+  WINHTTP_QUERY_LAST_MODIFIED                = 11;
+  WINHTTP_QUERY_MESSAGE_ID                   = 12;
+  WINHTTP_QUERY_URI                          = 13;
+  WINHTTP_QUERY_DERIVED_FROM                 = 14;
+  WINHTTP_QUERY_COST                         = 15;
+  WINHTTP_QUERY_LINK                         = 16;
+  WINHTTP_QUERY_PRAGMA                       = 17;
+  WINHTTP_QUERY_VERSION                      = 18;
+  WINHTTP_QUERY_STATUS_CODE                  = 19;
+  WINHTTP_QUERY_STATUS_TEXT                  = 20;
+  WINHTTP_QUERY_RAW_HEADERS                  = 21;
+  WINHTTP_QUERY_RAW_HEADERS_CRLF             = 22;
+  WINHTTP_QUERY_CONNECTION                   = 23;
+  WINHTTP_QUERY_ACCEPT                       = 24;
+  WINHTTP_QUERY_ACCEPT_CHARSET               = 25;
+  WINHTTP_QUERY_ACCEPT_ENCODING              = 26;
+  WINHTTP_QUERY_ACCEPT_LANGUAGE              = 27;
+  WINHTTP_QUERY_AUTHORIZATION                = 28;
+  WINHTTP_QUERY_CONTENT_ENCODING             = 29;
+  WINHTTP_QUERY_FORWARDED                    = 30;
+  WINHTTP_QUERY_FROM                         = 31;
+  WINHTTP_QUERY_IF_MODIFIED_SINCE            = 32;
+  WINHTTP_QUERY_LOCATION                     = 33;
+  WINHTTP_QUERY_ORIG_URI                     = 34;
+  WINHTTP_QUERY_REFERER                      = 35;
+  WINHTTP_QUERY_RETRY_AFTER                  = 36;
+  WINHTTP_QUERY_SERVER                       = 37;
+  WINHTTP_QUERY_TITLE                        = 38;
+  WINHTTP_QUERY_USER_AGENT                   = 39;
+  WINHTTP_QUERY_WWW_AUTHENTICATE             = 40;
+  WINHTTP_QUERY_PROXY_AUTHENTICATE           = 41;
+  WINHTTP_QUERY_ACCEPT_RANGES                = 42;
+  WINHTTP_QUERY_SET_COOKIE                   = 43;
+  WINHTTP_QUERY_COOKIE                       = 44;
+  WINHTTP_QUERY_REQUEST_METHOD               = 45;
+  WINHTTP_QUERY_REFRESH                      = 46;
+  WINHTTP_QUERY_CONTENT_DISPOSITION          = 47;
+  WINHTTP_QUERY_AGE                          = 48;
+  WINHTTP_QUERY_CACHE_CONTROL                = 49;
+  WINHTTP_QUERY_CONTENT_BASE                 = 50;
+  WINHTTP_QUERY_CONTENT_LOCATION             = 51;
+  WINHTTP_QUERY_CONTENT_MD5                  = 52;
+  WINHTTP_QUERY_CONTENT_RANGE                = 53;
+  WINHTTP_QUERY_ETAG                         = 54;
+  WINHTTP_QUERY_HOST                         = 55;
+  WINHTTP_QUERY_IF_MATCH                     = 56;
+  WINHTTP_QUERY_IF_NONE_MATCH                = 57;
+  WINHTTP_QUERY_IF_RANGE                     = 58;
+  WINHTTP_QUERY_IF_UNMODIFIED_SINCE          = 59;
+  WINHTTP_QUERY_MAX_FORWARDS                 = 60;
+  WINHTTP_QUERY_PROXY_AUTHORIZATION          = 61;
+  WINHTTP_QUERY_RANGE                        = 62;
+  WINHTTP_QUERY_TRANSFER_ENCODING            = 63;
+  WINHTTP_QUERY_UPGRADE                      = 64;
+  WINHTTP_QUERY_VARY                         = 65;
+  WINHTTP_QUERY_VIA                          = 66;
+  WINHTTP_QUERY_WARNING                      = 67;
+  WINHTTP_QUERY_EXPECT                       = 68;
+  WINHTTP_QUERY_PROXY_CONNECTION             = 69;
+  WINHTTP_QUERY_UNLESS_MODIFIED_SINCE        = 70;
+  WINHTTP_QUERY_PROXY_SUPPORT                = 75;
+  WINHTTP_QUERY_AUTHENTICATION_INFO          = 76;
+  WINHTTP_QUERY_PASSPORT_URLS                = 77;
+  WINHTTP_QUERY_PASSPORT_CONFIG              = 78;
+  WINHTTP_QUERY_MAX                          = 78;
+  WINHTTP_QUERY_CUSTOM                       = 65535;
+  WINHTTP_QUERY_FLAG_REQUEST_HEADERS         = $80000000;
+  WINHTTP_QUERY_FLAG_SYSTEMTIME              = $40000000;
+  WINHTTP_QUERY_FLAG_NUMBER                  = $20000000;
+
+  // Secure connection error status flags
+  WINHTTP_CALLBACK_STATUS_FLAG_CERT_REV_FAILED         = $00000001;
+  WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CERT            = $00000002;
+  WINHTTP_CALLBACK_STATUS_FLAG_CERT_REVOKED            = $00000004;
+  WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA              = $00000008;
+  WINHTTP_CALLBACK_STATUS_FLAG_CERT_CN_INVALID         = $00000010;
+  WINHTTP_CALLBACK_STATUS_FLAG_CERT_DATE_INVALID       = $00000020;
+  WINHTTP_CALLBACK_STATUS_FLAG_CERT_WRONG_USAGE        = $00000040;
+  WINHTTP_CALLBACK_STATUS_FLAG_SECURITY_CHANNEL_ERROR  = $80000000;
+
+  WINHTTP_FLAG_SECURE_PROTOCOL_SSL2   = $00000008;
+  WINHTTP_FLAG_SECURE_PROTOCOL_SSL3   = $00000020;
+  WINHTTP_FLAG_SECURE_PROTOCOL_TLS1   = $00000080;
+  WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1 = $00000200;
+  WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 = $00000800;
+
+  // Note: SECURE_PROTOCOL_ALL does not include TLS1.1 and higher!
+  WINHTTP_FLAG_SECURE_PROTOCOL_ALL    = WINHTTP_FLAG_SECURE_PROTOCOL_SSL2
+                                     or WINHTTP_FLAG_SECURE_PROTOCOL_SSL3
+                                     or WINHTTP_FLAG_SECURE_PROTOCOL_TLS1;
+
+  // AutoProxy
+  WINHTTP_AUTOPROXY_AUTO_DETECT           = $00000001;
+  WINHTTP_AUTOPROXY_CONFIG_URL            = $00000002;
+  WINHTTP_AUTOPROXY_HOST_KEEPCASE         = $00000004;
+  WINHTTP_AUTOPROXY_HOST_LOWERCASE        = $00000008;
+  WINHTTP_AUTOPROXY_RUN_INPROCESS         = $00010000;
+  WINHTTP_AUTOPROXY_RUN_OUTPROCESS_ONLY   = $00020000;
+
+  // Flags for dwAutoDetectFlags
+  WINHTTP_AUTO_DETECT_TYPE_DHCP           = $00000001;
+  WINHTTP_AUTO_DETECT_TYPE_DNS_A          = $00000002;
 
 const
   WINHTTP_ERROR_BASE                      = 12000;
@@ -247,6 +561,8 @@ const
   ERROR_WINHTTP_CLIENT_CERT_NO_PRIVATE_KEY            = WINHTTP_ERROR_BASE + 185;
   ERROR_WINHTTP_CLIENT_CERT_NO_ACCESS_PRIVATE_KEY     = WINHTTP_ERROR_BASE + 186;
 
+  WINHTTP_ERROR_LAST                                  = WINHTTP_ERROR_BASE + 186;
+
 
 const
   WINHTTP_THRIFT_DEFAULTS = WINHTTP_FLAG_NULL_CODEPAGE
@@ -254,30 +570,42 @@ const
                          or WINHTTP_FLAG_ESCAPE_DISABLE;
 
 
+
 type
+  IWinHTTPSession = interface;
+  IWinHTTPConnection = interface;
+
   IWinHTTPRequest = interface
-    ['{35C6D9D4-FDCE-42C6-B84C-9294E6FB904C}']
+    ['{FADA4B45-D447-4F07-8361-1AD6656E5E8C}']
     function  Handle : HINTERNET;
+    function  Connection : IWinHTTPConnection;
     function  AddRequestHeader( const aHeader : string; const addflag : DWORD = WINHTTP_ADDREQ_FLAG_ADD) : Boolean;
     function  SetTimeouts( const aResolveTimeout, aConnectTimeout, aSendTimeout, aReceiveTimeout : Int32) : Boolean;
+    procedure TryAutoProxy( const aUrl : string);
+    procedure EnableAutomaticContentDecompression( const aEnable : Boolean);
     function  SendRequest( const pBuf : Pointer; const dwBytes : DWORD; const dwExtra : DWORD = 0) : Boolean;
     function  WriteExtraData( const pBuf : Pointer; const dwBytes : DWORD) : DWORD;
     function  FlushAndReceiveResponse : Boolean;
     function  ReadData( const dwRead : DWORD) : TBytes;  overload;
     function  ReadData( const pBuf : Pointer; const dwRead : DWORD) : DWORD;  overload;
+    function  QueryDataAvailable : DWORD;
+    function  QueryTotalResponseSize( out dwSize : DWORD) : Boolean;
+    function  QueryHttpStatus( out dwStatusCode : DWORD; out sStatusText : string) : Boolean;
   end;
 
   IWinHTTPConnection = interface
-    ['{1C4F78B5-1525-4788-B638-A0E41BCF4D43}']
+    ['{ED5BCA49-84D6-4CFE-BF18-3238B1FF2AFB}']
     function  Handle : HINTERNET;
+    function  Session : IWinHTTPSession;
     function  OpenRequest( const secure : Boolean; const aVerb, aObjName, aAcceptTypes : UnicodeString) : IWinHTTPRequest;
   end;
 
   IWinHTTPSession = interface
-    ['{B6F8BD98-0605-4A9E-B671-4CB191D74A5E}']
+    ['{261ADCB7-5465-4407-8840-468C17F009F0}']
     function  Handle : HINTERNET;
     function  Connect( const aHostName : UnicodeString; const aPort : INTERNET_PORT = INTERNET_DEFAULT_PORT) : IWinHTTPConnection;
     function  SetTimeouts( const aResolveTimeout, aConnectTimeout, aSendTimeout, aReceiveTimeout : Int32) : Boolean;
+    function  EnableSecureProtocols( const aFlagSet : DWORD) : Boolean;
   end;
 
   IWinHTTPUrl = interface
@@ -339,7 +667,7 @@ type
     // IWinHTTPSession
     function  Connect( const aHostName : UnicodeString; const aPort : INTERNET_PORT = INTERNET_DEFAULT_PORT) : IWinHTTPConnection;
     function  SetTimeouts( const aResolveTimeout, aConnectTimeout, aSendTimeout, aReceiveTimeout : Int32) : Boolean;
-
+    function  EnableSecureProtocols( const aFlagSet : DWORD) : Boolean;
   public
     constructor Create( const aAgent : UnicodeString;
                         const aAccessType : DWORD          = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
@@ -356,6 +684,7 @@ type
 
     // IWinHTTPConnection
     function  OpenRequest( const secure : Boolean; const aVerb, aObjName, aAcceptTypes : UnicodeString) : IWinHTTPRequest;
+    function  Session : IWinHTTPSession;
 
   public
     constructor Create( const aSession : IWinHTTPSession; const aHostName : UnicodeString; const aPort : INTERNET_PORT);
@@ -370,13 +699,19 @@ type
     FConnection : IWinHTTPConnection;
 
     // IWinHTTPRequest
+    function  Connection : IWinHTTPConnection;
     function  AddRequestHeader( const aHeader : string; const addflag : DWORD = WINHTTP_ADDREQ_FLAG_ADD) : Boolean;
     function  SetTimeouts( const aResolveTimeout, aConnectTimeout, aSendTimeout, aReceiveTimeout : Int32) : Boolean;
+    procedure TryAutoProxy( const aUrl : string);
+    procedure EnableAutomaticContentDecompression( const aEnable : Boolean);
     function  SendRequest( const pBuf : Pointer; const dwBytes : DWORD; const dwExtra : DWORD = 0) : Boolean;
     function  WriteExtraData( const pBuf : Pointer; const dwBytes : DWORD) : DWORD;
     function  FlushAndReceiveResponse : Boolean;
     function  ReadData( const dwRead : DWORD) : TBytes;  overload;
     function  ReadData( const pBuf : Pointer; const dwRead : DWORD) : DWORD;  overload;
+    function  QueryDataAvailable : DWORD;
+    function  QueryTotalResponseSize( out dwSize : DWORD) : Boolean;
+    function  QueryHttpStatus( out dwStatusCode : DWORD; out sStatusText : string) : Boolean;
 
   public
     constructor Create( const aConnection : IWinHTTPConnection;
@@ -432,7 +767,25 @@ type
   end;
 
 
+  WINHTTP_PROXY_INFO_Helper = record helper for WINHTTP_PROXY_INFO
+    procedure Initialize;
+    procedure FreeAllocatedResources;
+  end;
+
+
+  WINHTTP_CURRENT_USER_IE_PROXY_CONFIG_Helper = record helper for WINHTTP_CURRENT_USER_IE_PROXY_CONFIG
+    procedure Initialize;
+    procedure FreeAllocatedResources;
+  end;
+
+
   EWinHTTPException = class(Exception);
+
+{ helper functions }
+
+function WinHttpSysErrorMessage( const error : Cardinal): string;
+procedure RaiseLastWinHttpError;
+
 
 implementation
 
@@ -444,7 +797,11 @@ function WinHttpConnect;  stdcall; external WINHTTP_DLL;
 function WinHttpOpenRequest; stdcall; external WINHTTP_DLL;
 function WinHttpSendRequest; stdcall; external WINHTTP_DLL;
 function WinHttpSetTimeouts; stdcall; external WINHTTP_DLL;
+function WinHttpQueryOption; stdcall; external WINHTTP_DLL;
+function WinHttpSetOption; stdcall; external WINHTTP_DLL;
 function WinHttpAddRequestHeaders; stdcall; external WINHTTP_DLL;
+function WinHttpGetProxyForUrl; stdcall; external WINHTTP_DLL;
+function WinHttpGetIEProxyConfigForCurrentUser; stdcall; external WINHTTP_DLL;
 function WinHttpWriteData; stdcall; external WINHTTP_DLL;
 function WinHttpReceiveResponse; stdcall; external WINHTTP_DLL;
 function WinHttpQueryHeaders; stdcall; external WINHTTP_DLL;
@@ -452,6 +809,93 @@ function WinHttpQueryDataAvailable; stdcall; external WINHTTP_DLL;
 function WinHttpReadData; stdcall; external WINHTTP_DLL;
 function WinHttpCrackUrl; stdcall; external WINHTTP_DLL;
 function WinHttpCreateUrl; stdcall; external WINHTTP_DLL;
+
+
+{ helper functions }
+
+function WinHttpSysErrorMessage( const error : Cardinal): string;
+const FLAGS = FORMAT_MESSAGE_ALLOCATE_BUFFER
+           or FORMAT_MESSAGE_IGNORE_INSERTS
+           or FORMAT_MESSAGE_FROM_SYSTEM
+           or FORMAT_MESSAGE_FROM_HMODULE;
+var pBuffer : PChar;
+    nChars : Cardinal;
+begin
+  if (error < WINHTTP_ERROR_BASE)
+  or (error > WINHTTP_ERROR_LAST)
+  then Exit( SysUtils.SysErrorMessage( error));
+
+  pBuffer := nil;
+  try
+    nChars := FormatMessage( FLAGS,
+                             Pointer( GetModuleHandle( WINHTTP_DLL)),
+                             error,
+                             MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // default language
+                             @pBuffer, 0,
+                             nil);
+    SetString( result, pBuffer, nChars);
+  finally
+    LocalFree( NativeUInt( pBuffer));
+  end;
+end;
+
+
+procedure RaiseLastWinHttpError;
+var error : Cardinal;
+    sMsg  : string;
+begin
+  error := Cardinal( GetLastError);
+  if error <> NOERROR then begin
+    sMSg := IntToStr(Integer(error))+' '+WinHttpSysErrorMessage(error);
+    raise EWinHTTPException.Create( sMsg);
+  end;
+end;
+
+
+
+{ misc. record helper }
+
+
+procedure GlobalFreeAndNil( var p : LPWSTR);
+begin
+  if p <> nil then begin
+    GlobalFree( HGLOBAL( p));
+    p := nil;
+  end;
+end;
+
+
+procedure WINHTTP_PROXY_INFO_Helper.Initialize;
+begin
+  FillChar( Self, SizeOf(Self), 0);
+end;
+
+
+procedure WINHTTP_PROXY_INFO_Helper.FreeAllocatedResources;
+// The caller must free the lpszProxy and lpszProxyBypass strings
+// if they are non-NULL. Use GlobalFree to free the strings.
+begin
+  GlobalFreeAndNil( lpszProxy);
+  GlobalFreeAndNil( lpszProxyBypass);
+  Initialize;
+end;
+
+
+procedure WINHTTP_CURRENT_USER_IE_PROXY_CONFIG_Helper.Initialize;
+begin
+  FillChar( Self, SizeOf(Self), 0);
+end;
+
+
+procedure WINHTTP_CURRENT_USER_IE_PROXY_CONFIG_Helper.FreeAllocatedResources;
+// The caller must free the lpszProxy, lpszProxyBypass and lpszAutoConfigUrl strings
+// if they are non-NULL. Use GlobalFree to free the strings.
+begin
+  GlobalFreeAndNil( lpszProxy);
+  GlobalFreeAndNil( lpszProxyBypass);
+  GlobalFreeAndNil( lpszAutoConfigUrl);
+  Initialize;
+end;
 
 
 { TWinHTTPHandleObjectImpl }
@@ -497,6 +941,7 @@ begin
                          PWideChar(Pointer(aProxy)),        // may be nil
                          PWideChar(Pointer(aProxyBypass)),  // may be nil
                          aFlags);
+  if handle = nil then RaiseLastWinHttpError;
   inherited Create( handle);
 end;
 
@@ -520,6 +965,14 @@ begin
 end;
 
 
+function TWinHTTPSessionImpl.EnableSecureProtocols( const aFlagSet : DWORD) : Boolean;
+var dwSize : DWORD;
+begin
+  dwSize := SizeOf(aFlagSet);
+  result := WinHttpSetOption( Handle, WINHTTP_OPTION_SECURE_PROTOCOLS, @aFlagset, dwSize);
+end;
+
+
 { TWinHTTPConnectionImpl }
 
 constructor TWinHTTPConnectionImpl.Create( const aSession : IWinHTTPSession; const aHostName : UnicodeString; const aPort : INTERNET_PORT);
@@ -527,6 +980,7 @@ var handle : HINTERNET;
 begin
   FSession := aSession;
   handle   := WinHttpConnect( FSession.Handle, PWideChar(aHostName), aPort, 0);
+  if handle = nil then RaiseLastWinHttpError;
   inherited Create( handle);
 end;
 
@@ -535,6 +989,12 @@ destructor TWinHTTPConnectionImpl.Destroy;
 begin
   inherited Destroy;
   FSession := nil;
+end;
+
+
+function TWinHTTPConnectionImpl.Session : IWinHTTPSession;
+begin
+  result := FSession;
 end;
 
 
@@ -572,6 +1032,7 @@ begin
                                      PWideChar(aReferrer),
                                      @accept,
                                      aFlags);
+  if handle = nil then RaiseLastWinHttpError;
   inherited Create( handle);
 end;
 
@@ -580,6 +1041,12 @@ destructor TWinHTTPRequestImpl.Destroy;
 begin
   inherited Destroy;
   FConnection := nil;
+end;
+
+
+function TWinHTTPRequestImpl.Connection : IWinHTTPConnection;
+begin
+  result := FConnection;
 end;
 
 
@@ -592,6 +1059,99 @@ end;
 function TWinHTTPRequestImpl.AddRequestHeader( const aHeader : string; const addflag : DWORD) : Boolean;
 begin
   result := WinHttpAddRequestHeaders( FHandle, PWideChar(aHeader), DWORD(-1), addflag);
+end;
+
+
+procedure TWinHTTPRequestImpl.TryAutoProxy( const aUrl : string);
+// From MSDN:
+//    AutoProxy support is not fully integrated into the HTTP stack in WinHTTP.
+//    Before sending a request, the application must call WinHttpGetProxyForUrl
+//    to obtain the name of a proxy server and then call WinHttpSetOption using
+//    WINHTTP_OPTION_PROXY to set the proxy configuration on the WinHTTP request
+//    handle created by WinHttpOpenRequest.
+//    See https://docs.microsoft.com/en-us/windows/desktop/winhttp/winhttp-autoproxy-api
+var
+  options : WINHTTP_AUTOPROXY_OPTIONS;
+  proxy   : WINHTTP_PROXY_INFO;
+  ieProxy : WINHTTP_CURRENT_USER_IE_PROXY_CONFIG;
+  dwSize  : DWORD;
+begin
+  // try AutoProxy via PAC first
+  proxy.Initialize;
+  try
+    FillChar( options, SizeOf(options), 0);
+    options.dwFlags                := WINHTTP_AUTOPROXY_AUTO_DETECT;
+    options.dwAutoDetectFlags      := WINHTTP_AUTO_DETECT_TYPE_DHCP or WINHTTP_AUTO_DETECT_TYPE_DNS_A;
+    options.fAutoLogonIfChallenged := TRUE;
+    if WinHttpGetProxyForUrl( FConnection.Session.Handle, PChar(aUrl), options, proxy) then begin
+      dwSize  := SizeOf(proxy);
+      WinHttpSetOption( Handle, WINHTTP_OPTION_PROXY, @proxy, dwSize);
+      Exit;
+    end;
+
+  finally
+    proxy.FreeAllocatedResources;
+  end;
+
+  // Use IE settings as a fallback, useful in client (i.e. non-server) environments
+  ieProxy.Initialize;
+  try
+    if WinHttpGetIEProxyConfigForCurrentUser( ieProxy)
+    then begin
+
+      // lpszAutoConfigUrl = "Use automatic proxy configuration"
+      if ieProxy.lpszAutoConfigUrl <> nil then begin
+        options.lpszAutoConfigUrl := ieProxy.lpszAutoConfigUrl;
+        options.dwFlags := options.dwFlags or WINHTTP_AUTOPROXY_CONFIG_URL;
+
+        proxy.Initialize;
+        try
+          if WinHttpGetProxyForUrl( FConnection.Session.Handle, PChar(aUrl), options, proxy) then begin
+            dwSize := SizeOf(proxy);
+            WinHttpSetOption( Handle, WINHTTP_OPTION_PROXY, @proxy, dwSize);
+            Exit;
+          end;
+        finally
+          proxy.FreeAllocatedResources;
+        end;
+      end;
+
+      // lpszProxy = "use a proxy server"
+      if ieProxy.lpszProxy <> nil then begin
+        proxy.Initialize;
+        try
+          proxy.dwAccessType    := WINHTTP_ACCESS_TYPE_NAMED_PROXY;
+          proxy.lpszProxy       := ieProxy.lpszProxy;
+          proxy.lpszProxyBypass := ieProxy.lpszProxyBypass;
+          dwSize := SizeOf(proxy);
+          WinHttpSetOption( Handle, WINHTTP_OPTION_PROXY, @proxy, dwSize);
+          Exit;
+        finally
+          proxy.Initialize; // not FreeAllocatedResources, we only hold pointer copies!
+        end;
+      end;
+
+    end;
+
+  finally
+    ieProxy.FreeAllocatedResources;
+  end;
+end;
+
+
+procedure TWinHTTPRequestImpl.EnableAutomaticContentDecompression( const aEnable : Boolean);
+// Enable automatic gzip,deflate decompression on systems that support this option
+// From the docs: WinHTTP will automatically set an appropriate Accept-Encoding header,
+// overriding any value supplied by the caller -> we don't have to do this
+// Available on Win 8.1 or higher
+var value : DWORD;
+begin
+  if aEnable
+  then value := WINHTTP_DECOMPRESSION_FLAG_ALL
+  else value := 0;
+
+  // ignore returned value, the option is not supported with older WinHTTP versions
+  WinHttpSetOption( Handle, WINHTTP_OPTION_DECOMPRESSION, @value, SizeOf(DWORD));
 end;
 
 
@@ -644,6 +1204,99 @@ begin
   if (dwAvailable = 0)
   or not WinHttpReadData( FHandle, pBuf, dwAvailable, result)
   then result := 0;
+end;
+
+
+function TWinHTTPRequestImpl.QueryDataAvailable : DWORD;
+begin
+  if not WinHttpQueryDataAvailable( FHandle, result)
+  then result := 0;
+end;
+
+
+function TWinHTTPRequestImpl.QueryTotalResponseSize( out dwSize : DWORD) : Boolean;
+var dwBytes, dwError, dwIndex : DWORD;
+    bytes : array[0..32-1] of Byte;
+begin
+  dwBytes := SizeOf( result);
+  dwIndex := DWORD( WINHTTP_NO_HEADER_INDEX);
+  result := WinHttpQueryHeaders( FHandle,
+                                 WINHTTP_QUERY_CONTENT_LENGTH or WINHTTP_QUERY_FLAG_NUMBER,
+                                 WINHTTP_HEADER_NAME_BY_INDEX,
+                                 @dwSize, dwBytes,
+                                 dwIndex);
+  if result then Exit;
+  dwError := GetLastError;
+
+  // Hack: WinHttpQueryHeaders() sometimes returns error 122 even if the buffer is large enough
+  // According to the docs, WINHTTP_QUERY_FLAG_NUMBER always returns a 32 bit number (which it does!)
+  // but for some strange reason since win 10 build 18636.815 passing a 4 bytes buffer is not enough anymore
+  if dwError = ERROR_INSUFFICIENT_BUFFER then begin
+    dwBytes := sizeof(bytes);
+    FillChar( bytes[0], dwBytes, 0);
+    result := WinHttpQueryHeaders( FHandle,
+                                   WINHTTP_QUERY_CONTENT_LENGTH or WINHTTP_QUERY_FLAG_NUMBER,
+                                   WINHTTP_HEADER_NAME_BY_INDEX,
+                                   @bytes[0], dwBytes,
+                                   dwIndex);
+    if result then begin
+      ASSERT( dwBytes = SizeOf(dwSize));        // result is still a DWORD
+      Move( bytes[0], dwSize, SizeOf(dwSize));  // copy over result data
+      Exit;
+    end;
+  end;
+
+  // header may just not be there
+  dwSize  := MAXINT;  // we don't know, just return something useful
+  ASSERT( dwError = ERROR_WINHTTP_HEADER_NOT_FOUND);  // anything else would be an real error
+end;
+
+
+function TWinHTTPRequestImpl.QueryHttpStatus( out dwStatusCode : DWORD; out sStatusText : string) : Boolean;
+var dwBytes, dwError, dwIndex : DWORD;
+begin
+  // HTTP status code
+  dwIndex := DWORD( WINHTTP_NO_HEADER_INDEX);
+  dwBytes := SizeOf(dwStatusCode);
+  result  := WinHttpQueryHeaders( FHandle,
+                                  WINHTTP_QUERY_STATUS_CODE or WINHTTP_QUERY_FLAG_NUMBER,
+                                  WINHTTP_HEADER_NAME_BY_INDEX,
+                                  @dwStatusCode, dwBytes,
+                                  dwIndex);
+  if not result then begin
+    dwStatusCode := 0;  // no data
+    dwError      := GetLastError;
+    if dwError <> ERROR_WINHTTP_HEADER_NOT_FOUND then ASSERT(FALSE);  // anything else would be an real error
+  end;
+
+  // HTTP status text
+  dwIndex := DWORD( WINHTTP_NO_HEADER_INDEX);
+  dwBytes := 0;
+  result  := WinHttpQueryHeaders( FHandle,
+                                  WINHTTP_QUERY_STATUS_TEXT,
+                                  WINHTTP_HEADER_NAME_BY_INDEX,
+                                  WINHTTP_NO_OUTPUT_BUFFER,  // we need to determine the size first
+                                  dwBytes,                   // will receive the required buffer size
+                                  dwIndex);
+  if dwBytes > 0 then begin  // allocate buffer and call again to get the value
+    SetLength( sStatusText, dwBytes div SizeOf(Char));
+    dwBytes := Length(sStatusText) * SizeOf(Char);
+    result  := WinHttpQueryHeaders( FHandle,
+                                    WINHTTP_QUERY_STATUS_TEXT,
+                                    WINHTTP_HEADER_NAME_BY_INDEX,
+                                    @sStatusText[1], dwBytes,
+                                    dwIndex);
+  end;
+  if result
+  then SetLength( sStatusText, StrLen(PChar(sStatusText)))  // get rid of any terminating #0 chars
+  else begin
+    sStatusText := '';  // no data
+    dwError     := GetLastError;
+    if dwError <> ERROR_WINHTTP_HEADER_NOT_FOUND then ASSERT(FALSE);  // anything else would be an real error
+  end;
+
+  // do we have at least something?
+  result := (dwStatusCode <> 0) or (sStatusText <> '');
 end;
 
 
@@ -802,4 +1455,5 @@ end;
 
 
 end.
+
 

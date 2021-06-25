@@ -56,8 +56,6 @@ pip.exe ^
             tornado ^
             twisted                       || EXIT /B
 
-cinst -y ghc                              || EXIT /B
-
 :: Adobe Flex SDK 4.6 for ActionScript
 MKDIR "C:\Adobe\Flex\SDK\4.6"             || EXIT /B
 appveyor DownloadFile http://download.macromedia.com/pub/flex/sdk/flex_sdk_4.6.zip -FileName C:\Adobe\Flex\SDK\4.6\SDK.zip || EXIT /B

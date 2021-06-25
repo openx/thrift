@@ -73,9 +73,6 @@ if(WITH_CPP)
     find_package(Qt5 QUIET COMPONENTS Core Network)
     CMAKE_DEPENDENT_OPTION(WITH_QT5 "Build with Qt5 support" ON
                            "Qt5_FOUND" OFF)
-    find_package(OpenSSL QUIET)
-    CMAKE_DEPENDENT_OPTION(WITH_OPENSSL "Build with OpenSSL support" ON
-                           "OPENSSL_FOUND" OFF)
 endif()
 CMAKE_DEPENDENT_OPTION(BUILD_CPP "Build C++ library" ON
                        "BUILD_LIBRARIES;WITH_CPP" OFF)
@@ -87,6 +84,13 @@ if(WITH_C_GLIB)
 endif()
 CMAKE_DEPENDENT_OPTION(BUILD_C_GLIB "Build C (GLib) library" ON
                        "BUILD_LIBRARIES;WITH_C_GLIB;GLIB_FOUND" OFF)
+
+# OpenSSL
+if(WITH_CPP OR WITH_C_GLIB)
+    find_package(OpenSSL QUIET)
+    CMAKE_DEPENDENT_OPTION(WITH_OPENSSL "Build with OpenSSL support" ON
+                        "OPENSSL_FOUND" OFF)
+endif()
 
 # Java
 option(WITH_JAVA "Build Java Thrift library" ON)
@@ -101,6 +105,16 @@ else()
                            "BUILD_LIBRARIES;WITH_JAVA;JAVA_FOUND;GRADLEW_FOUND" OFF)
 endif()
 
+# Javascript
+option(WITH_JAVASCRIPT "Build Javascript Thrift library" ON)
+CMAKE_DEPENDENT_OPTION(BUILD_JAVASCRIPT "Build Javascript library" ON
+                       "BUILD_LIBRARIES;WITH_JAVASCRIPT;NOT WIN32; NOT CYGWIN" OFF)
+
+# NodeJS
+option(WITH_NODEJS "Build NodeJS Thrift library" ON)
+CMAKE_DEPENDENT_OPTION(BUILD_NODEJS "Build NodeJS library" ON
+                       "BUILD_LIBRARIES;WITH_NODEJS" OFF)
+
 # Python
 option(WITH_PYTHON "Build Python Thrift library" ON)
 find_package(PythonInterp QUIET) # for Python executable
@@ -108,17 +122,15 @@ find_package(PythonLibs QUIET) # for Python.h
 CMAKE_DEPENDENT_OPTION(BUILD_PYTHON "Build Python library" ON
                        "BUILD_LIBRARIES;WITH_PYTHON;PYTHONINTERP_FOUND;PYTHONLIBS_FOUND" OFF)
 
-# Haskell
-option(WITH_HASKELL "Build Haskell Thrift library" ON)
-find_package(GHC QUIET)
-find_package(Cabal QUIET)
-CMAKE_DEPENDENT_OPTION(BUILD_HASKELL "Build GHC library" ON
-                       "BUILD_LIBRARIES;WITH_HASKELL;GHC_FOUND;CABAL_FOUND" OFF)
-
 # Common library options
 # https://cmake.org/cmake/help/latest/variable/BUILD_SHARED_LIBS.html
 # Default on Windows is static, shared mode library support needs work...
-CMAKE_DEPENDENT_OPTION(BUILD_SHARED_LIBS "Build shared libraries" OFF "WIN32" ON)
+if(WIN32)
+    set(DEFAULT_BUILD_SHARED_LIBS ON)
+else()
+    set(DEFAULT_BUILD_SHARED_LIBS OFF)
+endif()
+option(BUILD_SHARED_LIBS "Build shared libraries" ${DEFAULT_BUILD_SHARED_LIBS})
 
 if (WITH_SHARED_LIB)
     message(WARNING "WITH_SHARED_LIB is deprecated; use -DBUILD_SHARED_LIBS=ON instead")
@@ -151,7 +163,7 @@ message(STATUS "Build configuration summary")
 message(STATUS "  Build compiler:                             ${BUILD_COMPILER}")
 message(STATUS "  Build libraries:                            ${BUILD_LIBRARIES}")
 message(STATUS "  Build tests:                                ${BUILD_TESTING}")
-MESSAGE_DEP(HAVE_COMPILER "Disabled because BUILD_THRIFT=OFF and no valid THRIFT_COMPILER is given")
+MESSAGE_DEP(HAVE_COMPILER "Disabled because BUILD_COMPILER=OFF and no valid THRIFT_COMPILER is given")
 message(STATUS "  Build type:                                 ${CMAKE_BUILD_TYPE}")
 message(STATUS)
 message(STATUS "Language libraries:")
@@ -159,6 +171,11 @@ message(STATUS)
 message(STATUS "  Build as3 library:                          ${BUILD_AS3}")
 MESSAGE_DEP(WITH_AS3 "Disabled by WITH_AS3=OFF")
 MESSAGE_DEP(HAVE_COMPC "Adobe Flex compc was not found - did you set env var FLEX_HOME?")
+message(STATUS)
+message(STATUS "  Build with OpenSSL:                         ${WITH_OPENSSL}")
+if(WITH_OPENSSL)
+    message(STATUS "    Version:                                  ${OPENSSL_VERSION}")
+endif()
 message(STATUS)
 message(STATUS "  Build C++ library:                          ${BUILD_CPP}")
 MESSAGE_DEP(WITH_CPP "Disabled by WITH_CPP=OFF")
@@ -182,15 +199,15 @@ else()
     MESSAGE_DEP(JAVA_FOUND "Java Runtime missing")
     MESSAGE_DEP(GRADLEW_FOUND "Gradle Wrapper missing")
 endif()
+message(STATUS "  Build Javascript library:                   ${BUILD_JAVASCRIPT}")
+MESSAGE_DEP(WITH_JAVASCRIPT "Disabled by WITH_JAVASCRIPT=OFF")
+message(STATUS "  Build NodeJS library:                       ${BUILD_NODEJS}")
+MESSAGE_DEP(WITH_NODEJS "Disabled by WITH_NODEJS=OFF")
 message(STATUS)
 message(STATUS "  Build Python library:                       ${BUILD_PYTHON}")
 MESSAGE_DEP(WITH_PYTHON "Disabled by WITH_PYTHON=OFF")
 MESSAGE_DEP(PYTHONLIBS_FOUND "Python libraries missing")
 message(STATUS)
-message(STATUS "  Build Haskell library:                      ${BUILD_HASKELL}")
-MESSAGE_DEP(WITH_HASKELL "Disabled by WITH_HASKELL=OFF")
-MESSAGE_DEP(GHC_FOUND "GHC missing")
-MESSAGE_DEP(CABAL_FOUND "Cabal missing")
 message(STATUS)
 message(STATUS "----------------------------------------------------------")
 endmacro(PRINT_CONFIG_SUMMARY)

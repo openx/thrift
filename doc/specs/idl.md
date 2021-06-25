@@ -1,6 +1,6 @@
 ## Thrift interface description language
 
-For Thrift version 0.13.0.
+For Thrift version 0.15.0.
 
 The Thrift interface definition language (IDL) allows for the definition of [Thrift Types](/docs/types). A Thrift IDL file is processed by the Thrift code generator to produce code for the various target languages to support the defined structs and services in the IDL file.
 
@@ -38,7 +38,7 @@ A namespace declares which namespaces/package/module/etc. the type definitions i
 
     [5]  Namespace       ::=  ( 'namespace' ( NamespaceScope Identifier ) )
 
-    [6]  NamespaceScope  ::=  '*' | 'c_glib' | 'cpp' | 'csharp' | 'delphi' | 'go' | 'java' | 'js' | 'lua' | 'netcore' | 'perl' | 'php' | 'py' | 'py.twisted' | 'rb' | 'st' | 'xsd'
+    [6]  NamespaceScope  ::=  '*' | 'c_glib' | 'cpp' | 'delphi' | 'haxe' | 'go' | 'java' | 'js' | 'lua' | 'netstd' | 'perl' | 'php' | 'py' | 'py.twisted' | 'rb' | 'st' | 'xsd'
 
 ## Definition
 
@@ -96,7 +96,7 @@ A service provides the interface for a set of functionality provided by a Thrift
 
 ## Field
 
-    [16] Field           ::=  FieldID? FieldReq? FieldType Identifier ('= ConstValue)? XsdFieldOptions ListSeparator?
+    [16] Field           ::=  FieldID? FieldReq? FieldType Identifier ('=' ConstValue)? XsdFieldOptions ListSeparator?
 
 ### Field ID
 
@@ -104,7 +104,7 @@ A service provides the interface for a set of functionality provided by a Thrift
 
 ### Field Requiredness
 
-There are two explicit requiredness values, and a third one that is applied implicity if neither  *required* nor *optional* are given: *default* requiredness.
+There are two explicit requiredness values, and a third one that is applied implicitly if neither  *required* nor *optional* are given: *default* requiredness.
 
     [18] FieldReq        ::=  'required' | 'optional' 
 
@@ -126,7 +126,7 @@ Because of this behaviour, required fields drastically limit the options with re
 - Read: Optional fields may, or may not be part of the input stream. 
 - Default values: are written when the isset flag is set
 
-Most language implementations use the recommended pratice of so-called "isset" flags to indicate whether a particular optional field is set or not. Only fields with this flag set are written, and conversely the flag is only set when a field value has been read from the input stream. 
+Most language implementations use the recommended practice of so-called "isset" flags to indicate whether a particular optional field is set or not. Only fields with this flag set are written, and conversely the flag is only set when a field value has been read from the input stream. 
 	
 #### default requiredness (implicit)
 
@@ -144,7 +144,7 @@ The major point to keep in mind here is the fact, that any unwritten default val
 
 ### XSD Options
 
-N.B.: These have  some internal purpose at Facebook but serve no current purpose in Thrift. Use of these options is strongly discouraged.
+N.B.: These have some internal purpose at Facebook but serve no current purpose in Thrift. The use of these options is strongly discouraged.
 
     [19] XsdFieldOptions ::=  'xsd_optional'? 'xsd_nillable'? XsdAttrs?
 
@@ -210,6 +210,21 @@ N.B.: These have  some internal purpose at Facebook but serve no current purpose
 
     [42] Digit           ::=  ['0'-'9']
 
+## Reserved keywords
+
+    "BEGIN", "END", "__CLASS__", "__DIR__", "__FILE__", "__FUNCTION__",
+    "__LINE__", "__METHOD__", "__NAMESPACE__", "abstract", "alias", "and", "args", "as",
+    "assert", "begin", "break", "case", "catch", "class", "clone", "continue", "declare",
+    "def", "default", "del", "delete", "do", "dynamic", "elif", "else", "elseif", "elsif",
+    "end", "enddeclare", "endfor", "endforeach", "endif", "endswitch", "endwhile", "ensure",
+    "except", "exec", "finally", "float", "for", "foreach", "from", "function", "global",
+    "goto", "if", "implements", "import", "in", "inline", "instanceof", "interface", "is",
+    "lambda", "module", "native", "new", "next", "nil", "not", "or", "package", "pass",
+    "public", "print", "private", "protected", "raise", "redo", "rescue", "retry", "register",
+    "return", "self", "sizeof", "static", "super", "switch", "synchronized", "then", "this",
+    "throw", "transient", "try", "undef", "unless", "unsigned", "until", "use", "var",
+    "virtual", "volatile", "when", "while", "with", "xor", "yield" 
+
 ## Examples
 
 Here are some examples of Thrift definitions, using the Thrift IDL:
@@ -224,8 +239,8 @@ Here are some examples of Thrift definitions, using the Thrift IDL:
  [tutorial]:           /tutorial/
  [fb303.thrift]:       https://raw.githubusercontent.com/apache/thrift/master/contrib/fb303/if/fb303.thrift
  [Apache Cassandra's]: http://cassandra.apache.org/
- [cassandra.thrift]:   http://svn.apache.org/viewvc/cassandra/trunk/interface/cassandra.thrift?view=co
- [Evernote API]:       http://www.evernote.com/about/developer/api/
+ [cassandra.thrift]:   https://gitbox.apache.org/repos/asf?p=cassandra.git;a=blob_plain;f=interface/cassandra.thrift;hb=refs/heads/cassandra-3.0
+ [Evernote API]:       https://github.com/evernote/evernote-thrift
 
 ## To Do/Questions
 
@@ -236,7 +251,7 @@ Initialization of Base Types for all Languages?
 Why does position of `CppType` vary between `SetType` and `ListType`?
 
  * std::set does sort the elements automatically, that's the design. see [Thrift Types](/docs/types) or the [C++ std:set reference][] for further details
- * The question is, how other languages are doing that? What about custom objects, do they have a Compare function the set the order correctly?
+ * The question is, how other languages are doing that? What about custom objects, do they have a Compare function to set the order correctly?
 
  [C++ std:set reference]: http://www.cplusplus.com/reference/stl/set/
 

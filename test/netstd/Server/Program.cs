@@ -16,7 +16,9 @@
 // under the License.
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using ThriftTest;
 
 namespace Server
@@ -25,43 +27,38 @@ namespace Server
     {
         public static int Main(string[] args)
         {
-            try
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                Console.SetBufferSize(Console.BufferWidth, 4096);
-            }
-            catch (Exception)
-            {
-                Console.WriteLine("Failed to grow scroll-back buffer");
-            }
-
-            // split mode and options
-            var subArgs = new List<string>(args);
-            var firstArg = string.Empty;
-            if (subArgs.Count > 0)
-            { 
-                firstArg = subArgs[0];
-                subArgs.RemoveAt(0);
+                try
+                {
+                    Console.SetBufferSize(Console.BufferWidth, 4096);
+                }
+                catch (Exception)
+                {
+                    Console.WriteLine("Failed to grow scroll-back buffer");
+                }
             }
 
-            // run whatever mode is choosen
-            switch(firstArg)
+            // run whatever mode is choosen, default to test impl
+            var argslist = new List<string>(args);
+            switch (argslist.FirstOrDefault())
             {
-                case "server":
-                    return TestServer.Execute(subArgs);
+                case "server":  // crosstest wants to pass this, so just emit a hint and ignore
+                    Console.WriteLine("Hint: The 'server' argument is no longer required.");
+                    argslist.RemoveAt(0);
+                    return TestServer.Execute(argslist);
                 case "--help":
                     PrintHelp();
                     return 0;
                 default:
-                    Console.WriteLine("Invalid argument: {0}", firstArg);
-                    PrintHelp();
-                    return -1;
+                    return TestServer.Execute(argslist);
             }
         }
 
         private static void PrintHelp()
         {
             Console.WriteLine("Usage:");
-            Console.WriteLine("  Server  server  [options]'");
+            Console.WriteLine("  Server  [options]");
             Console.WriteLine("  Server  --help");
             Console.WriteLine("");
 
@@ -69,5 +66,3 @@ namespace Server
         }
     }
 }
-
-

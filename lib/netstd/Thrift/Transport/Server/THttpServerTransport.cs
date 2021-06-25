@@ -31,8 +31,10 @@ namespace Thrift.Transport.Server
     public class THttpServerTransport
     {
         protected const string ContentType = "application/x-thrift";
+        /* never used
         private readonly ILogger _logger;
         private readonly RequestDelegate _next;
+        */
         protected Encoding Encoding = Encoding.UTF8;
 
         protected TProtocolFactory InputProtocolFactory;
@@ -42,24 +44,31 @@ namespace Thrift.Transport.Server
         protected TTransportFactory OutputTransportFactory;
 
         protected ITAsyncProcessor Processor;
+        protected TConfiguration Configuration;
 
-        public THttpServerTransport(ITAsyncProcessor processor, RequestDelegate next = null, ILoggerFactory loggerFactory = null)
-            : this(processor, new TBinaryProtocol.Factory(), null, next, loggerFactory)
+        public THttpServerTransport(
+            ITAsyncProcessor processor,
+            TConfiguration config,
+            RequestDelegate next = null,
+            ILoggerFactory loggerFactory = null)
+            : this(processor, config, new TBinaryProtocol.Factory(), null, next, loggerFactory)
         {
         }
 
         public THttpServerTransport(
-            ITAsyncProcessor processor, 
+            ITAsyncProcessor processor,
+            TConfiguration config,
             TProtocolFactory protocolFactory, 
             TTransportFactory transFactory = null, 
             RequestDelegate next = null,
             ILoggerFactory loggerFactory = null)
-            : this(processor, protocolFactory, protocolFactory, transFactory, transFactory, next, loggerFactory)
+            : this(processor, config, protocolFactory, protocolFactory, transFactory, transFactory, next, loggerFactory)
         {
         }
 
         public THttpServerTransport(
-            ITAsyncProcessor processor, 
+            ITAsyncProcessor processor,
+            TConfiguration config,
             TProtocolFactory inputProtocolFactory,
             TProtocolFactory outputProtocolFactory,
             TTransportFactory inputTransFactory = null,
@@ -70,26 +79,31 @@ namespace Thrift.Transport.Server
             // loggerFactory == null is not illegal anymore
 
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
+            Configuration = config;  // may be null
+
             InputProtocolFactory = inputProtocolFactory ?? throw new ArgumentNullException(nameof(inputProtocolFactory));
             OutputProtocolFactory = outputProtocolFactory ?? throw new ArgumentNullException(nameof(outputProtocolFactory));
 
             InputTransportFactory = inputTransFactory;
             OutputTransportFactory = outputTransFactory;
 
+            // never used
+            _ = next;
+            _ = loggerFactory;
+            /* never used
             _next = next;
             _logger = (loggerFactory != null) ? loggerFactory.CreateLogger<THttpServerTransport>() : new NullLogger<THttpServerTransport>();
+            */
         }
 
         public async Task Invoke(HttpContext context)
         {
-            context.Response.ContentType = ContentType;
             await ProcessRequestAsync(context, context.RequestAborted); //TODO: check for correct logic
         }
 
         public async Task ProcessRequestAsync(HttpContext context, CancellationToken cancellationToken)
         {
-            var transport = new TStreamTransport(context.Request.Body, context.Response.Body);
-
+            var transport = new TStreamTransport(context.Request.Body, context.Response.Body, Configuration);
             try
             {
                 var intrans = (InputTransportFactory != null) ? InputTransportFactory.GetTransport(transport) : transport;
@@ -98,15 +112,22 @@ namespace Thrift.Transport.Server
                 var input = InputProtocolFactory.GetProtocol(intrans);
                 var output = OutputProtocolFactory.GetProtocol(outtrans);
 
+                context.Response.ContentType = ContentType;
                 while (await Processor.ProcessAsync(input, output, cancellationToken))
                 {
+                    if (!context.Response.HasStarted)  // oneway method called
+                        await context.Response.Body.FlushAsync(cancellationToken);
                 }
             }
             catch (TTransportException)
             {
-                // Client died, just move on
-                if (!context.Response.HasStarted)
-                    context.Response.StatusCode = 500;
+                if (!context.Response.HasStarted)  // if something goes bust, let the client know
+                    context.Response.StatusCode = 500;   // internal server error
+            }
+            catch (TProtocolException)
+            {
+                if (!context.Response.HasStarted)  // if something goes bust, let the client know
+                    context.Response.StatusCode = 400;   // bad request, e.g. required field missing
             }
             finally
             {

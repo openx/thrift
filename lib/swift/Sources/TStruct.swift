@@ -29,10 +29,10 @@ public protocol TStruct : TSerializable {
 }
 
 public extension TStruct {
-  public static var fieldIds: [String: (id: Int32, type: TType)] { return [:] }
-  public static var thriftType: TType { return .struct }
+  static var fieldIds: [String: (id: Int32, type: TType)] { return [:] }
+  static var thriftType: TType { return .struct }
   
-  public func write(to proto: TProtocol) throws {
+  func write(to proto: TProtocol) throws {
     // Write struct name first
     try proto.writeStructBegin(name: Self.structName)
     
@@ -43,15 +43,6 @@ public extension TStruct {
     }
     try proto.writeFieldStop()
     try proto.writeStructEnd()
-  }
-  
-  public var hashValue: Int {
-    let prime = 31
-    var result = 1
-    self.forEach { _, value, _ in
-      result = prime &* result &+ (value.hashValue)
-    }
-    return result
   }
   
   /// Provides a block for handling each (available) thrift property using reflection
@@ -71,7 +62,7 @@ public extension TStruct {
     for (propName, propValue) in mirror.children {
       guard let propName = propName else { continue }
 
-      if let tval = unwrap(any: propValue) as? TSerializable, let id = Self.fieldIds[propName] {
+      if let tval = unwrap(any: propValue, parent: mirror) as? TSerializable, let id = Self.fieldIds[propName] {
         try block(propName, tval, id)
       }
     }
@@ -87,10 +78,10 @@ public extension TStruct {
   /// - parameter any: Any instance to attempt to unwrap
   ///
   /// - returns: Unwrapped Any as Optional<Any>
-  private func unwrap(any: Any) -> Any? {
+  private func unwrap(any: Any, parent: Mirror) -> Any? {
     let mi = Mirror(reflecting: any)
     
-    if mi.displayStyle != .optional { return any }
+    if parent.displayStyle != .enum && mi.displayStyle != .optional { return any }
     if mi.children.count == 0 { return nil }
     
     let (_, some) = mi.children.first!
